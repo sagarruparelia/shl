@@ -13,7 +13,7 @@ public class CreateShlResponse {
 
     private String id;
     private String shlinkUrl;
-    private String qrCodeUrl;
+    private String qrCode;
     private String managementUrl;
     private String label;
     private String flags;

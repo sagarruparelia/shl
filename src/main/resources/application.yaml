@@ -17,7 +17,6 @@ app:
     bucket: ${S3_BUCKET:shl-data}
     region: ${AWS_REGION:us-east-1}
     payload-prefix: payloads/
-    qrcode-prefix: qrcodes/
 
 server:
   port: 8080

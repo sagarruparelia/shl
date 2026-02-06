@@ -47,32 +47,6 @@ public class S3StorageService {
                 .doOnSuccess(r -> log.debug("Downloaded payload from S3: {}", s3Key));
     }
 
-    public Mono<Void> uploadQrCode(String shlId, int size, byte[] pngBytes) {
-        String key = appProperties.getS3().getQrcodePrefix() + shlId + "/" + size + ".png";
-        return Mono.fromFuture(() -> s3AsyncClient.putObject(
-                PutObjectRequest.builder()
-                        .bucket(appProperties.getS3().getBucket())
-                        .key(key)
-                        .contentType("image/png")
-                        .build(),
-                AsyncRequestBody.fromBytes(pngBytes)
-        )).doOnSuccess(r -> log.debug("Uploaded QR code to S3: {}", key))
-                .then();
-    }
-
-    public Mono<byte[]> getQrCode(String shlId, int size) {
-        String key = appProperties.getS3().getQrcodePrefix() + shlId + "/" + size + ".png";
-        return Mono.fromFuture(() -> s3AsyncClient.getObject(
-                GetObjectRequest.builder()
-                        .bucket(appProperties.getS3().getBucket())
-                        .key(key)
-                        .build(),
-                AsyncResponseTransformer.toBytes()
-        )).map(response -> response.asByteArray())
-                .doOnSuccess(r -> log.debug("Retrieved cached QR code from S3: {}", key))
-                .onErrorResume(NoSuchKeyException.class, e -> Mono.empty());
-    }
-
     public Mono<Void> deletePayloads(String shlId) {
         String prefix = appProperties.getS3().getPayloadPrefix() + shlId + "/";
         return Mono.fromFuture(() -> s3AsyncClient.listObjectsV2(

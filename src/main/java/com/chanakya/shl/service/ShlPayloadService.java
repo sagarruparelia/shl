@@ -38,10 +38,6 @@ public class ShlPayloadService {
         }
     }
 
-    public String buildQrCodeUrl(String shlId) {
-        return appProperties.getBaseUrl() + "/api/shl/" + shlId + "/qr";
-    }
-
     public String buildManagementUrl(String shlId) {
         return appProperties.getBaseUrl() + "/api/shl/" + shlId;
     }

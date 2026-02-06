@@ -33,6 +33,7 @@ public class ShlService {
     private final EncryptionService encryptionService;
     private final S3StorageService s3StorageService;
     private final ShlPayloadService shlPayloadService;
+    private final QrCodeService qrCodeService;
     private final AccessLogService accessLogService;
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
@@ -72,7 +73,7 @@ public class ShlService {
                             return Mono.error(new RuntimeException("Failed to serialize content", e));
                         }
                     })
-                    .map(this::toCreateResponse);
+                    .flatMap(this::toCreateResponse);
         });
     }
 
@@ -108,7 +109,7 @@ public class ShlService {
                         String fileContent = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8);
                         return encryptAndStore(savedShl, fileContent, contentType, originalFileName);
                     })
-                    .map(this::toCreateResponse);
+                    .flatMap(this::toCreateResponse);
         });
     }
 
@@ -155,6 +156,8 @@ public class ShlService {
         return shlRepository.findById(id)
                 .switchIfEmpty(Mono.error(new ShlNotFoundException(id)))
                 .flatMap(shl -> {
+                    String shlinkUrl = shlPayloadService.buildShlinkUrl(shl);
+
                     Mono<java.util.List<ShlDetailResponse.ContentSummary>> contentsMono =
                             shlContentRepository.findByShlId(id)
                                     .map(c -> ShlDetailResponse.ContentSummary.builder()
@@ -168,7 +171,10 @@ public class ShlService {
 
                     Mono<Long> accessCountMono = accessLogService.getAccessCount(id);
 
-                    return Mono.zip(contentsMono, accessCountMono)
+                    Mono<String> qrCodeMono = qrCodeService.generateBase64DataUri(
+                            shlinkUrl, appProperties.getQrCodeDefaultSize());
+
+                    return Mono.zip(contentsMono, accessCountMono, qrCodeMono)
                             .map(tuple -> ShlDetailResponse.builder()
                                     .id(shl.getId())
                                     .label(shl.getLabel())
@@ -178,8 +184,8 @@ public class ShlService {
                                     .expiresAt(shl.getExpiresAt() != null ? shl.getExpiresAt().toString() : null)
                                     .createdAt(shl.getCreatedAt() != null ? shl.getCreatedAt().toString() : null)
                                     .updatedAt(shl.getUpdatedAt() != null ? shl.getUpdatedAt().toString() : null)
-                                    .shlinkUrl(shlPayloadService.buildShlinkUrl(shl))
-                                    .qrCodeUrl(shlPayloadService.buildQrCodeUrl(shl.getId()))
+                                    .shlinkUrl(shlinkUrl)
+                                    .qrCode(tuple.getT3())
                                     .contents(tuple.getT1())
                                     .totalAccesses(tuple.getT2())
                                     .build());
@@ -202,17 +208,19 @@ public class ShlService {
         }
     }
 
-    private CreateShlResponse toCreateResponse(ShlDocument shl) {
-        return CreateShlResponse.builder()
-                .id(shl.getId())
-                .shlinkUrl(shlPayloadService.buildShlinkUrl(shl))
-                .qrCodeUrl(shlPayloadService.buildQrCodeUrl(shl.getId()))
-                .managementUrl(shlPayloadService.buildManagementUrl(shl.getId()))
-                .label(shl.getLabel())
-                .flags(shl.getFlags())
-                .expiresAt(shl.getExpiresAt() != null ? shl.getExpiresAt().toString() : null)
-                .singleUse(shl.isSingleUse())
-                .build();
+    private Mono<CreateShlResponse> toCreateResponse(ShlDocument shl) {
+        String shlinkUrl = shlPayloadService.buildShlinkUrl(shl);
+        return qrCodeService.generateBase64DataUri(shlinkUrl, appProperties.getQrCodeDefaultSize())
+                .map(qrCode -> CreateShlResponse.builder()
+                        .id(shl.getId())
+                        .shlinkUrl(shlinkUrl)
+                        .qrCode(qrCode)
+                        .managementUrl(shlPayloadService.buildManagementUrl(shl.getId()))
+                        .label(shl.getLabel())
+                        .flags(shl.getFlags())
+                        .expiresAt(shl.getExpiresAt() != null ? shl.getExpiresAt().toString() : null)
+                        .singleUse(shl.isSingleUse())
+                        .build());
     }
 
     private Mono<ShlSummaryResponse> toSummaryResponse(ShlDocument shl) {

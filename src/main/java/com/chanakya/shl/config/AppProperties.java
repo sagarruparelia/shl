@@ -24,6 +24,5 @@ public class AppProperties {
         private String bucket;
         private String region;
         private String payloadPrefix = "payloads/";
-        private String qrcodePrefix = "qrcodes/";
     }
 }

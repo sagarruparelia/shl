@@ -1,12 +1,9 @@
 package com.chanakya.shl.controller;
 
-import com.chanakya.shl.config.AppProperties;
 import com.chanakya.shl.model.dto.request.CreateShlRequest;
 import com.chanakya.shl.model.dto.response.CreateShlResponse;
 import com.chanakya.shl.model.dto.response.ShlDetailResponse;
 import com.chanakya.shl.service.AccessLogService;
-import com.chanakya.shl.service.QrCodeService;
-import com.chanakya.shl.service.ShlPayloadService;
 import com.chanakya.shl.service.ShlService;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -14,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.multipart.FilePart;
@@ -31,10 +27,7 @@ import java.util.Map;
 public class ShlManagementController {
 
     private final ShlService shlService;
-    private final QrCodeService qrCodeService;
-    private final ShlPayloadService shlPayloadService;
     private final AccessLogService accessLogService;
-    private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -125,21 +118,6 @@ public class ShlManagementController {
     public Mono<ResponseEntity<Void>> deactivate(@PathVariable String id) {
         return shlService.deactivate(id)
                 .then(Mono.just(ResponseEntity.noContent().<Void>build()));
-    }
-
-    @GetMapping("/{id}/qr")
-    public Mono<ResponseEntity<byte[]>> getQrCode(
-            @PathVariable String id,
-            @RequestParam(required = false) Integer size) {
-
-        int qrSize = size != null ? size : appProperties.getQrCodeDefaultSize();
-
-        return shlService.getShlDetail(id)
-                .flatMap(detail -> qrCodeService.getOrGenerateQrCode(id, detail.getShlinkUrl(), qrSize))
-                .map(pngBytes -> ResponseEntity.ok()
-                        .header(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_PNG_VALUE)
-                        .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
-                        .body(pngBytes));
     }
 
     @GetMapping("/{id}/access-log")

@@ -22,7 +22,7 @@ public class ShlDetailResponse {
     private String createdAt;
     private String updatedAt;
     private String shlinkUrl;
-    private String qrCodeUrl;
+    private String qrCode;
     private List<ContentSummary> contents;
     private long totalAccesses;
 
