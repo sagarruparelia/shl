@@ -1,3 +1,27 @@
 spring:
   application:
     name: shl
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/shl}
+  codec:
+    max-in-memory-size: 10MB
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  viewer-path: /view.html
+  default-passcode-attempts: 10
+  file-token-ttl-minutes: 60
+  qr-code-default-size: 300
+  s3:
+    bucket: ${S3_BUCKET:shl-data}
+    region: ${AWS_REGION:us-east-1}
+    payload-prefix: payloads/
+    qrcode-prefix: qrcodes/
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.chanakya.shl: DEBUG

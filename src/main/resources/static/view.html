@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART Health Link Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/jose@5.9.6/dist/browser/index.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5; color: #333; min-height: 100vh;
+            display: flex; justify-content: center; align-items: flex-start;
+            padding: 2rem;
+        }
+        .container { max-width: 800px; width: 100%; }
+        .card {
+            background: #fff; border-radius: 12px; padding: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 1rem; color: #1a73e8; }
+        h2 { font-size: 1.2rem; margin: 1rem 0 0.5rem; color: #555; }
+        .label { font-size: 0.9rem; color: #666; margin-bottom: 0.5rem; }
+        .status { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; display: inline-block; }
+        .status.loading { background: #fff3cd; color: #856404; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .passcode-form { margin: 1rem 0; }
+        .passcode-form input {
+            padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;
+            font-size: 1rem; width: 200px; margin-right: 0.5rem;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem; border: none; border-radius: 8px;
+            font-size: 1rem; cursor: pointer; background: #1a73e8; color: #fff;
+        }
+        .btn:hover { background: #1557b0; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .content-block {
+            background: #f8f9fa; border-radius: 8px; padding: 1rem;
+            margin: 0.5rem 0; overflow-x: auto;
+        }
+        .content-block pre {
+            white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem;
+            font-family: 'Fira Code', monospace; line-height: 1.5;
+        }
+        .error-msg { color: #dc3545; margin: 0.5rem 0; }
+        .file-item { padding: 0.75rem 0; border-bottom: 1px solid #eee; }
+        .file-item:last-child { border-bottom: none; }
+        #loading { text-align: center; padding: 2rem; }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid #eee;
+            border-top-color: #1a73e8; border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin: 0 auto 1rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <h1>SMART Health Link Viewer</h1>
+        <div id="label-display" class="label" style="display:none;"></div>
+        <span id="status" class="status loading">Initializing...</span>
+    </div>
+
+    <div id="passcode-section" class="card" style="display:none;">
+        <h2>Passcode Required</h2>
+        <p class="label">This health link is passcode-protected. Enter the passcode to continue.</p>
+        <div class="passcode-form">
+            <input type="password" id="passcode-input" placeholder="Enter passcode" autocomplete="off">
+            <button class="btn" id="passcode-submit" onclick="submitPasscode()">Submit</button>
+        </div>
+        <div id="passcode-error" class="error-msg" style="display:none;"></div>
+    </div>
+
+    <div id="loading" style="display:none;">
+        <div class="spinner"></div>
+        <p>Fetching and decrypting health data...</p>
+    </div>
+
+    <div id="content-section" style="display:none;"></div>
+
+    <div id="error-section" class="card" style="display:none;">
+        <h2>Error</h2>
+        <p id="error-message" class="error-msg"></p>
+    </div>
+</div>
+
+<script>
+    let shlPayload = null;
+
+    async function init() {
+        const hash = window.location.hash;
+        if (!hash || !hash.startsWith('#shlink:/')) {
+            showError('No SMART Health Link found in URL. The URL should contain #shlink:/ followed by encoded data.');
+            return;
+        }
+
+        const encodedPayload = hash.substring('#shlink:/'.length);
+        try {
+            const jsonStr = atob(encodedPayload.replace(/-/g, '+').replace(/_/g, '/') +
+                '='.repeat((4 - encodedPayload.length % 4) % 4));
+            shlPayload = JSON.parse(jsonStr);
+        } catch (e) {
+            showError('Failed to decode SMART Health Link payload: ' + e.message);
+            return;
+        }
+
+        if (shlPayload.label) {
+            const labelEl = document.getElementById('label-display');
+            labelEl.textContent = shlPayload.label;
+            labelEl.style.display = 'block';
+        }
+
+        if (shlPayload.exp && shlPayload.exp * 1000 < Date.now()) {
+            showError('This health link has expired.');
+            return;
+        }
+
+        if (shlPayload.flag && shlPayload.flag.includes('P')) {
+            document.getElementById('passcode-section').style.display = 'block';
+            updateStatus('Passcode required', 'loading');
+            document.getElementById('passcode-input').focus();
+        } else {
+            fetchManifest(null);
+        }
+    }
+
+    async function submitPasscode() {
+        const passcode = document.getElementById('passcode-input').value;
+        if (!passcode) return;
+        document.getElementById('passcode-error').style.display = 'none';
+        document.getElementById('passcode-submit').disabled = true;
+        await fetchManifest(passcode);
+        document.getElementById('passcode-submit').disabled = false;
+    }
+
+    async function fetchManifest(passcode) {
+        document.getElementById('loading').style.display = 'block';
+        updateStatus('Fetching manifest...', 'loading');
+
+        const body = {
+            recipient: 'SHL Viewer (Web)',
+            embeddedLengthMax: 10485760
+        };
+        if (passcode) body.passcode = passcode;
+
+        try {
+            const resp = await fetch(shlPayload.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (resp.status === 401) {
+                const errData = await resp.json();
+                document.getElementById('loading').style.display = 'none';
+                const errorEl = document.getElementById('passcode-error');
+                errorEl.textContent = 'Invalid passcode. Remaining attempts: ' + (errData.remainingAttempts || '?');
+                errorEl.style.display = 'block';
+                updateStatus('Invalid passcode', 'error');
+                return;
+            }
+
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.error || 'Server returned ' + resp.status);
+            }
+
+            const manifest = await resp.json();
+            document.getElementById('passcode-section').style.display = 'none';
+            await processManifest(manifest);
+        } catch (e) {
+            document.getElementById('loading').style.display = 'none';
+            showError('Failed to fetch manifest: ' + e.message);
+        }
+    }
+
+    async function processManifest(manifest) {
+        updateStatus('Decrypting files...', 'loading');
+        const contentSection = document.getElementById('content-section');
+        contentSection.innerHTML = '';
+
+        const keyBytes = base64UrlToBytes(shlPayload.key);
+        const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
+
+        for (const file of manifest.files) {
+            let jweString = file.embedded;
+
+            if (!jweString && file.location) {
+                const fileResp = await fetch(file.location);
+                if (!fileResp.ok) throw new Error('Failed to download file');
+                jweString = await fileResp.text();
+            }
+
+            if (!jweString) continue;
+
+            try {
+                const decrypted = await decryptJwe(jweString, cryptoKey);
+                const card = document.createElement('div');
+                card.className = 'card file-item';
+
+                let displayContent;
+                if (file.contentType && file.contentType.includes('json')) {
+                    try {
+                        const parsed = JSON.parse(decrypted);
+                        displayContent = JSON.stringify(parsed, null, 2);
+                    } catch { displayContent = decrypted; }
+                    card.innerHTML = '<h2>' + escapeHtml(file.contentType) + '</h2>' +
+                        '<div class="content-block"><pre>' + escapeHtml(displayContent) + '</pre></div>';
+                } else {
+                    card.innerHTML = '<h2>' + escapeHtml(file.contentType) + '</h2>' +
+                        '<p>File decrypted successfully (' + decrypted.length + ' bytes)</p>' +
+                        '<button class="btn" onclick="downloadDecrypted(this)" ' +
+                        'data-content="' + btoa(decrypted) + '" ' +
+                        'data-type="' + escapeHtml(file.contentType) + '">Download</button>';
+                }
+                contentSection.appendChild(card);
+            } catch (e) {
+                const card = document.createElement('div');
+                card.className = 'card file-item';
+                card.innerHTML = '<h2>' + escapeHtml(file.contentType) + '</h2>' +
+                    '<p class="error-msg">Failed to decrypt: ' + escapeHtml(e.message) + '</p>';
+                contentSection.appendChild(card);
+            }
+        }
+
+        document.getElementById('loading').style.display = 'none';
+        contentSection.style.display = 'block';
+        updateStatus('Decrypted ' + manifest.files.length + ' file(s)', 'success');
+    }
+
+    async function decryptJwe(compact, cryptoKey) {
+        const parts = compact.split('.');
+        if (parts.length !== 5) throw new Error('Invalid JWE format');
+
+        const [headerB64, , ivB64, ciphertextB64, tagB64] = parts;
+        const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
+
+        const iv = base64UrlToBytes(ivB64);
+        const ciphertext = base64UrlToBytes(ciphertextB64);
+        const tag = base64UrlToBytes(tagB64);
+
+        const combined = new Uint8Array(ciphertext.length + tag.length);
+        combined.set(ciphertext);
+        combined.set(tag, ciphertext.length);
+
+        const aad = new TextEncoder().encode(headerB64);
+
+        const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv, additionalData: aad, tagLength: 128 },
+            cryptoKey,
+            combined
+        );
+
+        let result = new Uint8Array(decrypted);
+        if (header.zip === 'DEF') {
+            result = await decompress(result);
+        }
+        return new TextDecoder().decode(result);
+    }
+
+    async function decompress(data) {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(data);
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+        const totalLength = chunks.reduce((a, c) => a + c.length, 0);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            result.set(chunk, offset);
+            offset += chunk.length;
+        }
+        return result;
+    }
+
+    function downloadDecrypted(btn) {
+        const content = atob(btn.dataset.content);
+        const type = btn.dataset.type;
+        const blob = new Blob([content], { type: type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'decrypted-file';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function base64UrlToBytes(str) {
+        const base64 = str.replace(/-/g, '+').replace(/_/g, '/') +
+            '='.repeat((4 - str.length % 4) % 4);
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    }
+
+    function updateStatus(text, type) {
+        const el = document.getElementById('status');
+        el.textContent = text;
+        el.className = 'status ' + type;
+    }
+
+    function showError(msg) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error-message').textContent = msg;
+        document.getElementById('error-section').style.display = 'block';
+        updateStatus('Error', 'error');
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    document.getElementById('passcode-input')?.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') submitPasscode();
+    });
+
+    init();
+</script>
+</body>
+</html>
