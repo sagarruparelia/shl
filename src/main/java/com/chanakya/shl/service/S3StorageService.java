@@ -20,16 +20,19 @@ public class S3StorageService {
     private final S3AsyncClient s3AsyncClient;
     private final AppProperties appProperties;
 
-    public Mono<Void> uploadPayload(String shlId, String contentId, String jweString) {
-        String key = appProperties.getS3().getPayloadPrefix() + shlId + "/" + contentId + ".jwe";
+    public String buildPayloadKey(String shlId, String contentId) {
+        return appProperties.getS3().getPayloadPrefix() + shlId + "/" + contentId + ".jwe";
+    }
+
+    public Mono<Void> uploadPayload(String s3Key, String jweString) {
         return Mono.fromFuture(() -> s3AsyncClient.putObject(
                 PutObjectRequest.builder()
                         .bucket(appProperties.getS3().getBucket())
-                        .key(key)
+                        .key(s3Key)
                         .contentType("application/jose")
                         .build(),
                 AsyncRequestBody.fromBytes(jweString.getBytes(StandardCharsets.UTF_8))
-        )).doOnSuccess(r -> log.debug("Uploaded payload to S3: {}", key))
+        )).doOnSuccess(r -> log.debug("Uploaded payload to S3: {}", s3Key))
                 .then();
     }
 

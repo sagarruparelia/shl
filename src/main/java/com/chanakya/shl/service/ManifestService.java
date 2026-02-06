@@ -11,7 +11,6 @@ import com.chanakya.shl.model.dto.request.ManifestRequest;
 import com.chanakya.shl.model.dto.response.ManifestFileEntry;
 import com.chanakya.shl.model.dto.response.ManifestResponse;
 import com.chanakya.shl.model.enums.AccessAction;
-import com.chanakya.shl.repository.FileDownloadTokenRepository;
 import com.chanakya.shl.repository.ShlContentRepository;
 import com.chanakya.shl.repository.ShlRepository;
 import com.chanakya.shl.util.SecureRandomUtil;
@@ -37,7 +36,6 @@ public class ManifestService {
 
     private final ShlRepository shlRepository;
     private final ShlContentRepository shlContentRepository;
-    private final FileDownloadTokenRepository fileDownloadTokenRepository;
     private final S3StorageService s3StorageService;
     private final ShlPayloadService shlPayloadService;
     private final AccessLogService accessLogService;
@@ -99,7 +97,7 @@ public class ManifestService {
                             .then(Mono.error(new InvalidPasscodeException(0)));
                 }))
                 .flatMap(decrementedShl -> {
-                    if (passwordEncoder.matches(request.getPasscode(), shl.getPasscodeHash())) {
+                    if (passwordEncoder.matches(request.getPasscode(), decrementedShl.getPasscodeHash())) {
                         // Passcode correct — restore the decremented attempt
                         Query restoreQuery = Query.query(Criteria.where("id").is(shl.getId()));
                         Update restoreUpdate = new Update().inc("passcodeFailuresRemaining", 1);
@@ -171,27 +169,28 @@ public class ManifestService {
                 .expiresAt(Instant.now().plus(appProperties.getFileTokenTtlMinutes(), ChronoUnit.MINUTES))
                 .consumed(false)
                 .build();
-        return fileDownloadTokenRepository.save(token);
+        return mongoTemplate.save(token);
     }
 
     public Mono<String> downloadFile(String tokenId, ServerHttpRequest httpRequest) {
-        return fileDownloadTokenRepository.findByIdAndConsumedFalse(tokenId)
+        // Atomically find and mark token as consumed
+        Query tokenQuery = Query.query(Criteria.where("id").is(tokenId)
+                .and("consumed").is(false));
+        Update tokenUpdate = new Update().set("consumed", true);
+
+        return mongoTemplate.findAndModify(tokenQuery, tokenUpdate, FileDownloadToken.class)
                 .switchIfEmpty(Mono.error(new ShlNotFoundException("Token not found or already consumed: " + tokenId)))
                 .flatMap(token -> {
                     if (token.getExpiresAt() != null && Instant.now().isAfter(token.getExpiresAt())) {
                         return Mono.error(new ShlExpiredException("Download token expired"));
                     }
 
-                    // Atomically mark as consumed
-                    token.setConsumed(true);
-                    return fileDownloadTokenRepository.save(token)
-                            .flatMap(consumed -> shlContentRepository.findById(consumed.getContentId()))
-                            .flatMap(content -> {
-                                accessLogService.logAccess(content.getShlId(), AccessAction.FILE_DOWNLOAD,
-                                                null, httpRequest, true, null)
-                                        .subscribe();
-                                return s3StorageService.downloadPayload(content.getS3Key());
-                            });
+                    return shlContentRepository.findById(token.getContentId())
+                            .flatMap(content ->
+                                    accessLogService.logAccess(content.getShlId(), AccessAction.FILE_DOWNLOAD,
+                                                    null, httpRequest, true, null)
+                                            .then(s3StorageService.downloadPayload(content.getS3Key()))
+                            );
                 });
     }
 

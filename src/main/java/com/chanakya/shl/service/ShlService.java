@@ -125,11 +125,10 @@ public class ShlService {
 
                     return shlContentRepository.save(contentDoc)
                             .flatMap(savedContent -> {
-                                String s3Key = appProperties.getS3().getPayloadPrefix()
-                                        + shl.getId() + "/" + savedContent.getId() + ".jwe";
+                                String s3Key = s3StorageService.buildPayloadKey(shl.getId(), savedContent.getId());
                                 savedContent.setS3Key(s3Key);
                                 return shlContentRepository.save(savedContent)
-                                        .then(s3StorageService.uploadPayload(shl.getId(), savedContent.getId(), jweString));
+                                        .then(s3StorageService.uploadPayload(s3Key, jweString));
                             });
                 })
                 .thenReturn(shl);

@@ -2,10 +2,8 @@ package com.chanakya.shl.controller;
 
 import com.chanakya.shl.config.AppProperties;
 import com.chanakya.shl.model.dto.request.CreateShlRequest;
-import com.chanakya.shl.model.dto.response.AccessLogEntry;
 import com.chanakya.shl.model.dto.response.CreateShlResponse;
 import com.chanakya.shl.model.dto.response.ShlDetailResponse;
-import com.chanakya.shl.model.dto.response.ShlSummaryResponse;
 import com.chanakya.shl.service.AccessLogService;
 import com.chanakya.shl.service.QrCodeService;
 import com.chanakya.shl.service.ShlPayloadService;
@@ -14,6 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,7 +20,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.http.codec.multipart.Part;
 import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -55,17 +53,15 @@ public class ShlManagementController {
 
         Mono<CreateShlOptions> optionsMono;
         if (optionsPart != null) {
-            optionsMono = optionsPart.content()
+            optionsMono = DataBufferUtils.join(optionsPart.content())
                     .map(dataBuffer -> {
-                        byte[] bytes = new byte[dataBuffer.readableByteCount()];
-                        dataBuffer.read(bytes);
-                        return bytes;
-                    })
-                    .reduce(new byte[0], (acc, bytes) -> {
-                        byte[] combined = new byte[acc.length + bytes.length];
-                        System.arraycopy(acc, 0, combined, 0, acc.length);
-                        System.arraycopy(bytes, 0, combined, acc.length, bytes.length);
-                        return combined;
+                        try {
+                            byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                            dataBuffer.read(bytes);
+                            return bytes;
+                        } finally {
+                            DataBufferUtils.release(dataBuffer);
+                        }
                     })
                     .flatMap(bytes -> {
                         try {
@@ -79,17 +75,15 @@ public class ShlManagementController {
         }
 
         return optionsMono.flatMap(options ->
-                filePart.content()
+                DataBufferUtils.join(filePart.content())
                         .map(dataBuffer -> {
-                            byte[] bytes = new byte[dataBuffer.readableByteCount()];
-                            dataBuffer.read(bytes);
-                            return bytes;
-                        })
-                        .reduce(new byte[0], (acc, bytes) -> {
-                            byte[] combined = new byte[acc.length + bytes.length];
-                            System.arraycopy(acc, 0, combined, 0, acc.length);
-                            System.arraycopy(bytes, 0, combined, acc.length, bytes.length);
-                            return combined;
+                            try {
+                                byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                                dataBuffer.read(bytes);
+                                return bytes;
+                            } finally {
+                                DataBufferUtils.release(dataBuffer);
+                            }
                         })
                         .flatMap(fileBytes -> {
                             String contentType = filePart.headers().getContentType() != null
