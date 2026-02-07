@@ -29,7 +29,13 @@ public class ShlProtocolController {
 
         log.debug("Manifest request for manifestId: {}", manifestId);
         return manifestService.processManifestRequest(manifestId, request, httpRequest)
-                .map(ResponseEntity::ok);
+                .map(response -> {
+                    var builder = ResponseEntity.ok();
+                    if ("can-change".equals(response.getStatus())) {
+                        builder.header("Retry-After", "60");
+                    }
+                    return builder.body(response);
+                });
     }
 
     @GetMapping("/direct/{manifestId}")
@@ -40,7 +46,13 @@ public class ShlProtocolController {
 
         log.debug("Direct access for manifestId: {}", manifestId);
         return manifestService.processDirectAccess(manifestId, recipient, httpRequest)
-                .map(ResponseEntity::ok);
+                .map(response -> {
+                    var builder = ResponseEntity.ok();
+                    if ("can-change".equals(response.getStatus())) {
+                        builder.header("Retry-After", "60");
+                    }
+                    return builder.body(response);
+                });
     }
 
     @GetMapping("/file/{tokenId}")

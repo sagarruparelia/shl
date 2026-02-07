@@ -132,7 +132,7 @@ Content-Type: application/json
 }
 ```
 
-The `content` field accepts any valid JSON — typically a FHIR Bundle containing patient records, immunizations, lab results, or other clinical documents.
+The `content` field accepts any valid JSON — typically a FHIR Bundle containing patient records, immunizations, lab results, or other clinical documents. JSON content is automatically tagged with content type `application/fhir+json;fhirVersion=4.0.1` per the SHL spec recommendation.
 
 ### 2. File Upload (multipart)
 
@@ -434,12 +434,12 @@ When a file is too large to embed in the manifest response, the server issues a 
 
 ### Encryption
 
-| Layer              | Algorithm                                    | Purpose                                      |
-|--------------------|----------------------------------------------|----------------------------------------------|
-| Payload encryption | JWE with `alg:dir`, `enc:A256GCM`, `zip:DEF`, `cty` header | Encrypts health data at rest in S3 |
-| Key size           | 256-bit (32 bytes)                           | Generated via `java.security.SecureRandom`   |
-| Key delivery       | Embedded in URL fragment (`#shlink:/`)       | Never transmitted to server in HTTP requests |
-| Passcode hashing   | BCrypt                                       | Protects passcodes in the database           |
+| Layer              | Algorithm                                                  | Purpose                                      |
+|--------------------|------------------------------------------------------------|----------------------------------------------|
+| Payload encryption | JWE with `alg:dir`, `enc:A256GCM`, `zip:DEF`, `cty` header | Encrypts health data at rest in S3           |
+| Key size           | 256-bit (32 bytes)                                         | Generated via `java.security.SecureRandom`   |
+| Key delivery       | Embedded in URL fragment (`#shlink:/`)                     | Never transmitted to server in HTTP requests |
+| Passcode hashing   | BCrypt                                                     | Protects passcodes in the database           |
 
 ### Zero-Knowledge Architecture
 
@@ -611,8 +611,9 @@ Content-Type: application/json
   "status": "finalized",
   "files": [
     {
-      "contentType": "application/fhir+json",
-      "embedded": "eyJ6aXAiOiJERUYi..."
+      "contentType": "application/fhir+json;fhirVersion=4.0.1",
+      "embedded": "eyJ6aXAiOiJERUYi...",
+      "lastUpdated": "2026-02-07T16:16:18.494Z"
     }
   ]
 }
@@ -620,7 +621,7 @@ Content-Type: application/json
 
 The `status` field indicates whether the manifest content may change:
 - `"finalized"` — content will not change (default for non-L-flag SHLs)
-- `"can-change"` — content may be updated over time (L-flag SHLs)
+- `"can-change"` — content may be updated over time (L-flag SHLs); response includes `Retry-After: 60` header to guide polling interval
 
 #### File Download
 

@@ -123,26 +123,31 @@ public class ManifestService {
                     if (maxEmbedded != null && maxEmbedded > 0) {
                         return s3StorageService.downloadPayload(content.getS3Key())
                                 .flatMap(jweString -> {
+                                    String lastUpdated = content.getCreatedAt() != null ? content.getCreatedAt().toString() : null;
                                     if (jweString.length() <= maxEmbedded) {
                                         return Mono.just(ManifestFileEntry.builder()
                                                 .contentType(content.getContentType())
                                                 .embedded(jweString)
+                                                .lastUpdated(lastUpdated)
                                                 .build());
                                     } else {
                                         return createFileToken(shl, content.getId())
                                                 .map(token -> ManifestFileEntry.builder()
                                                         .contentType(content.getContentType())
                                                         .location(shlPayloadService.buildFileDownloadUrl(token.getId()))
+                                                        .lastUpdated(lastUpdated)
                                                         .build());
                                     }
                                 });
                     }
 
                     // Default: create download token
+                    String lastUpdated = content.getCreatedAt() != null ? content.getCreatedAt().toString() : null;
                     return createFileToken(shl, content.getId())
                             .map(token -> ManifestFileEntry.builder()
                                     .contentType(content.getContentType())
                                     .location(shlPayloadService.buildFileDownloadUrl(token.getId()))
+                                    .lastUpdated(lastUpdated)
                                     .build());
                 })
                 .collectList()
@@ -216,6 +221,7 @@ public class ManifestService {
                                     .map(jweString -> ManifestFileEntry.builder()
                                             .contentType(content.getContentType())
                                             .embedded(jweString)
+                                            .lastUpdated(content.getCreatedAt() != null ? content.getCreatedAt().toString() : null)
                                             .build()))
                             .collectList()
                             .flatMap((List<ManifestFileEntry> files) -> {

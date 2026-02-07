@@ -16,4 +16,5 @@ public class ManifestFileEntry {
     private String contentType;
     private String embedded;
     private String location;
+    private String lastUpdated;
 }

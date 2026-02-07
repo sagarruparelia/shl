@@ -68,7 +68,7 @@ public class ShlService {
                     .flatMap(savedShl -> {
                         try {
                             String contentJson = objectMapper.writeValueAsString(request.getContent());
-                            return encryptAndStore(savedShl, contentJson, "application/fhir+json", null);
+                            return encryptAndStore(savedShl, contentJson, "application/fhir+json;fhirVersion=4.0.1", null);
                         } catch (Exception e) {
                             return Mono.error(new RuntimeException("Failed to serialize content", e));
                         }
