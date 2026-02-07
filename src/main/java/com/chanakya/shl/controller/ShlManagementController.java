@@ -3,6 +3,7 @@ package com.chanakya.shl.controller;
 import com.chanakya.shl.model.dto.request.CreateShlRequest;
 import com.chanakya.shl.model.dto.response.CreateShlResponse;
 import com.chanakya.shl.model.dto.response.ShlDetailResponse;
+import com.chanakya.shl.model.enums.FhirCategory;
 import com.chanakya.shl.service.AccessLogService;
 import com.chanakya.shl.service.ShlService;
 import tools.jackson.databind.ObjectMapper;
@@ -18,6 +19,7 @@ import org.springframework.http.codec.multipart.Part;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -85,7 +87,8 @@ public class ShlManagementController {
                             return shlService.createFromFile(
                                     fileBytes, contentType, filePart.filename(),
                                     options.label, options.passcode, options.expirationInSeconds,
-                                    options.singleUse, options.longTerm);
+                                    options.singleUse, options.longTerm,
+                                    options.patientId, options.categories);
                         })
         ).map(response -> ResponseEntity.status(201).body(response));
     }
@@ -142,5 +145,7 @@ public class ShlManagementController {
         public Long expirationInSeconds;
         public boolean singleUse;
         public boolean longTerm;
+        public String patientId;
+        public List<FhirCategory> categories;
     }
 }

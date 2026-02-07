@@ -42,6 +42,7 @@ dependencies {
     // AWS S3 (reactive) for encrypted payload + QR code storage
     implementation(platform("software.amazon.awssdk:bom:2.31.1"))
     implementation("software.amazon.awssdk:s3")
+    implementation("software.amazon.awssdk:auth")
     implementation("software.amazon.awssdk:netty-nio-client")
 
     // Bean validation, passcode hashing, config metadata

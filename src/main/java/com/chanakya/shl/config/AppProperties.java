@@ -17,6 +17,7 @@ public class AppProperties {
     private int fileTokenTtlMinutes = 60;
     private int qrCodeDefaultSize = 300;
     private S3Properties s3 = new S3Properties();
+    private HealthLakeProperties healthlake = new HealthLakeProperties();
 
     @Getter
     @Setter
@@ -25,5 +26,12 @@ public class AppProperties {
         private String region;
         private String endpoint;
         private String payloadPrefix = "payloads/";
+    }
+
+    @Getter
+    @Setter
+    public static class HealthLakeProperties {
+        private String datastoreEndpoint;
+        private String region = "us-east-1";
     }
 }

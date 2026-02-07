@@ -21,6 +21,9 @@ app:
     region: ${AWS_REGION:us-east-1}
     endpoint: ${S3_ENDPOINT:http://localhost:4566}
     payload-prefix: payloads/
+  healthlake:
+    datastore-endpoint: ${HEALTHLAKE_ENDPOINT:}
+    region: ${HEALTHLAKE_REGION:us-east-1}
 
 server:
   port: 8080

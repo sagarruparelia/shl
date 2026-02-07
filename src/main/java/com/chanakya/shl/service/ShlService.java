@@ -8,6 +8,7 @@ import com.chanakya.shl.model.dto.request.CreateShlRequest;
 import com.chanakya.shl.model.dto.response.CreateShlResponse;
 import com.chanakya.shl.model.dto.response.ShlDetailResponse;
 import com.chanakya.shl.model.dto.response.ShlSummaryResponse;
+import com.chanakya.shl.model.enums.FhirCategory;
 import com.chanakya.shl.model.enums.ShlFlag;
 import com.chanakya.shl.repository.ShlContentRepository;
 import com.chanakya.shl.repository.ShlRepository;
@@ -22,6 +23,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +37,7 @@ public class ShlService {
     private final ShlPayloadService shlPayloadService;
     private final QrCodeService qrCodeService;
     private final AccessLogService accessLogService;
+    private final HealthLakeService healthLakeService;
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
 
@@ -43,6 +46,7 @@ public class ShlService {
     public Mono<CreateShlResponse> createFromJson(CreateShlRequest request) {
         return Mono.defer(() -> {
             validateFlags(request);
+            validateDataSource(request);
 
             String encryptionKey = SecureRandomUtil.generateBase64UrlRandom(32);
             String manifestId = SecureRandomUtil.generateBase64UrlRandom(32);
@@ -65,22 +69,40 @@ public class ShlService {
                     .build();
 
             return shlRepository.save(shl)
-                    .flatMap(savedShl -> {
-                        try {
-                            String contentJson = objectMapper.writeValueAsString(request.getContent());
-                            return encryptAndStore(savedShl, contentJson, "application/fhir+json;fhirVersion=4.0.1", null);
-                        } catch (Exception e) {
-                            return Mono.error(new RuntimeException("Failed to serialize content", e));
-                        }
-                    })
+                    .flatMap(savedShl -> storeAllContent(savedShl, request))
                     .flatMap(this::toCreateResponse);
+        });
+    }
+
+    private Mono<ShlDocument> storeAllContent(ShlDocument shl, CreateShlRequest request) {
+        Mono<ShlDocument> healthLakeMono = Mono.just(shl);
+
+        List<FhirCategory> categories = request.getCategories();
+        if (categories != null && !categories.isEmpty()) {
+            healthLakeMono = healthLakeService.fetchBundles(request.getPatientId(), categories)
+                    .concatMap(bundleJson -> encryptAndStore(shl, bundleJson,
+                            "application/fhir+json;fhirVersion=4.0.1", null))
+                    .then(Mono.just(shl));
+        }
+
+        return healthLakeMono.flatMap(s -> {
+            if (request.getContent() != null) {
+                try {
+                    String contentJson = objectMapper.writeValueAsString(request.getContent());
+                    return encryptAndStore(s, contentJson, "application/fhir+json;fhirVersion=4.0.1", null);
+                } catch (Exception e) {
+                    return Mono.error(new RuntimeException("Failed to serialize content", e));
+                }
+            }
+            return Mono.just(s);
         });
     }
 
     public Mono<CreateShlResponse> createFromFile(byte[] fileBytes, String contentType,
                                                     String originalFileName, String label,
                                                     String passcode, Long expirationInSeconds,
-                                                    boolean singleUse, boolean longTerm) {
+                                                    boolean singleUse, boolean longTerm,
+                                                    String patientId, List<FhirCategory> categories) {
         return Mono.defer(() -> {
             if (singleUse && longTerm) {
                 return Mono.error(new IllegalArgumentException("Cannot combine single-use (U) with long-term (L) flag"));
@@ -109,8 +131,19 @@ public class ShlService {
 
             return shlRepository.save(shl)
                     .flatMap(savedShl -> {
-                        String fileContent = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8);
-                        return encryptAndStore(savedShl, fileContent, contentType, originalFileName);
+                        // Store HealthLake bundles if categories provided
+                        Mono<ShlDocument> healthLakeMono = Mono.just(savedShl);
+                        if (categories != null && !categories.isEmpty() && patientId != null) {
+                            healthLakeMono = healthLakeService.fetchBundles(patientId, categories)
+                                    .concatMap(bundleJson -> encryptAndStore(savedShl, bundleJson,
+                                            "application/fhir+json;fhirVersion=4.0.1", null))
+                                    .then(Mono.just(savedShl));
+                        }
+                        // Then store the uploaded file
+                        return healthLakeMono.flatMap(s -> {
+                            String fileContent = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8);
+                            return encryptAndStore(s, fileContent, contentType, originalFileName);
+                        });
                     })
                     .flatMap(this::toCreateResponse);
         });
@@ -211,6 +244,18 @@ public class ShlService {
         }
         if (request.isSingleUse() && request.getPasscode() != null) {
             throw new IllegalArgumentException("Cannot combine single-use (U) with passcode (P) flag");
+        }
+    }
+
+    private void validateDataSource(CreateShlRequest request) {
+        boolean hasCategories = request.getCategories() != null && !request.getCategories().isEmpty();
+        boolean hasContent = request.getContent() != null;
+
+        if (!hasCategories && !hasContent) {
+            throw new IllegalArgumentException("At least one data source is required: provide 'content' or 'categories' with 'patientId'");
+        }
+        if (hasCategories && (request.getPatientId() == null || request.getPatientId().isBlank())) {
+            throw new IllegalArgumentException("'patientId' is required when 'categories' are specified");
         }
     }
 
