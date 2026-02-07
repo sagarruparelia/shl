@@ -15,5 +15,6 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ManifestResponse {
 
+    private String status;
     private List<ManifestFileEntry> files;
 }

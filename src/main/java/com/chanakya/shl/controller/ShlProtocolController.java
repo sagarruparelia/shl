@@ -3,6 +3,7 @@ package com.chanakya.shl.controller;
 import com.chanakya.shl.model.dto.request.ManifestRequest;
 import com.chanakya.shl.model.dto.response.ManifestResponse;
 import com.chanakya.shl.service.ManifestService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -23,7 +24,7 @@ public class ShlProtocolController {
     @PostMapping("/manifest/{manifestId}")
     public Mono<ResponseEntity<ManifestResponse>> manifest(
             @PathVariable String manifestId,
-            @RequestBody ManifestRequest request,
+            @Valid @RequestBody ManifestRequest request,
             ServerHttpRequest httpRequest) {
 
         log.debug("Manifest request for manifestId: {}", manifestId);
@@ -34,7 +35,7 @@ public class ShlProtocolController {
     @GetMapping("/direct/{manifestId}")
     public Mono<ResponseEntity<ManifestResponse>> directAccess(
             @PathVariable String manifestId,
-            @RequestParam(required = false) String recipient,
+            @RequestParam String recipient,
             ServerHttpRequest httpRequest) {
 
         log.debug("Direct access for manifestId: {}", manifestId);

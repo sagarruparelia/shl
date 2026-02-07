@@ -83,7 +83,10 @@ public class ShlService {
                                                     boolean singleUse, boolean longTerm) {
         return Mono.defer(() -> {
             if (singleUse && longTerm) {
-                return Mono.error(new IllegalArgumentException("Cannot combine single-use with long-term flag"));
+                return Mono.error(new IllegalArgumentException("Cannot combine single-use (U) with long-term (L) flag"));
+            }
+            if (singleUse && passcode != null) {
+                return Mono.error(new IllegalArgumentException("Cannot combine single-use (U) with passcode (P) flag"));
             }
 
             String encryptionKey = SecureRandomUtil.generateBase64UrlRandom(32);
@@ -115,7 +118,7 @@ public class ShlService {
 
     private Mono<ShlDocument> encryptAndStore(ShlDocument shl, String content,
                                                String contentType, String originalFileName) {
-        return encryptionService.encrypt(content, shl.getEncryptionKey())
+        return encryptionService.encrypt(content, shl.getEncryptionKey(), contentType)
                 .flatMap(jweString -> {
                     ShlContentDocument contentDoc = ShlContentDocument.builder()
                             .shlId(shl.getId())
@@ -204,7 +207,10 @@ public class ShlService {
 
     private void validateFlags(CreateShlRequest request) {
         if (request.isSingleUse() && request.isLongTerm()) {
-            throw new IllegalArgumentException("Cannot combine single-use with long-term flag");
+            throw new IllegalArgumentException("Cannot combine single-use (U) with long-term (L) flag");
+        }
+        if (request.isSingleUse() && request.getPasscode() != null) {
+            throw new IllegalArgumentException("Cannot combine single-use (U) with passcode (P) flag");
         }
     }
 

@@ -154,10 +154,12 @@ public class ManifestService {
                         deactivateMono = shlRepository.save(shl).then();
                     }
 
+                    String status = shl.getFlags().contains("L") ? "can-change" : "finalized";
+
                     return deactivateMono
                             .then(accessLogService.logAccess(shl.getId(), AccessAction.MANIFEST_REQUEST,
                                     request.getRecipient(), httpRequest, true, null))
-                            .thenReturn(ManifestResponse.builder().files(files).build());
+                            .thenReturn(ManifestResponse.builder().status(status).files(files).build());
                 });
     }
 
@@ -217,16 +219,18 @@ public class ManifestService {
                                             .build()))
                             .collectList()
                             .flatMap((List<ManifestFileEntry> files) -> {
+                                String status = shl.getFlags().contains("L") ? "can-change" : "finalized";
+
                                 if (shl.isSingleUse()) {
                                     shl.setActive(false);
                                     return shlRepository.save(shl)
                                             .then(accessLogService.logAccess(shl.getId(), AccessAction.DIRECT_ACCESS,
                                                     recipient, httpRequest, true, null))
-                                            .thenReturn(ManifestResponse.builder().files(files).build());
+                                            .thenReturn(ManifestResponse.builder().status(status).files(files).build());
                                 }
                                 return accessLogService.logAccess(shl.getId(), AccessAction.DIRECT_ACCESS,
                                                 recipient, httpRequest, true, null)
-                                        .thenReturn(ManifestResponse.builder().files(files).build());
+                                        .thenReturn(ManifestResponse.builder().status(status).files(files).build());
                             });
                 });
     }

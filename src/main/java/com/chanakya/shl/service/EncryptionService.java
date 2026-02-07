@@ -16,13 +16,14 @@ import javax.crypto.spec.SecretKeySpec;
 @Slf4j
 public class EncryptionService {
 
-    public Mono<String> encrypt(String plaintext, String base64UrlKey) {
+    public Mono<String> encrypt(String plaintext, String base64UrlKey, String contentType) {
         return Mono.fromCallable(() -> {
             byte[] keyBytes = Base64UrlUtil.decode(base64UrlKey);
             SecretKey secretKey = new SecretKeySpec(keyBytes, "AES");
 
             JWEHeader header = new JWEHeader.Builder(JWEAlgorithm.DIR, EncryptionMethod.A256GCM)
                     .compressionAlgorithm(CompressionAlgorithm.DEF)
+                    .contentType(contentType)
                     .build();
 
             JWEObject jweObject = new JWEObject(header, new Payload(plaintext));

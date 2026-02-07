@@ -170,6 +170,7 @@ The file content is read as raw bytes, encrypted into a JWE, and stored in S3. T
   │     alg: dir             │
   │     enc: A256GCM         │
   │     zip: DEF (deflate)   │
+  │     cty: (content type)  │
   │  3. Output: compact JWE  │
   │     string (5 parts,     │
   │     base64url-encoded)   │
@@ -219,6 +220,7 @@ The file content is read as raw bytes, encrypted into a JWE, and stored in S3. T
   │     Single-use requested?                        │
   │       → Add "U" to flags                         │
   │       → Cannot combine with long-term ("L")      │
+  │       → Cannot combine with passcode ("P")       │
   │                                                  │
   │     Expiration provided?                         │
   │       → Calculate expiresAt = now + seconds      │
@@ -232,6 +234,7 @@ The file content is read as raw bytes, encrypted into a JWE, and stored in S3. T
   │       Algorithm:   dir (direct key agreement)    │
   │       Encryption:  A256GCM (AES-256 in GCM mode) │
   │       Compression: DEF (DEFLATE)                 │
+  │       Content-Type: cty header (MIME type)       │
   │                                                  │
   │     Input:  plaintext health data                │
   │     Key:    the generated encryptionKey          │
@@ -349,8 +352,8 @@ When a recipient opens a SMART Health Link (by clicking the URL or scanning the 
   │  SERVER-SIDE VALIDATION                          │
   │                                                  │
   │  1. Look up SHL by manifestId                    │
-  │  2. Check: active? → 410 Gone if not             │
-  │  3. Check: expired? → 410 Gone if yes            │
+  │  2. Check: active? → 404 if not                   │
+  │  3. Check: expired? → 404 if yes                  │
   │  4. If P-flag:                                   │
   │     a. Atomic decrement passcode attempts        │
   │        (findAndModify, race-safe)                │
@@ -433,7 +436,7 @@ When a file is too large to embed in the manifest response, the server issues a 
 
 | Layer              | Algorithm                                    | Purpose                                      |
 |--------------------|----------------------------------------------|----------------------------------------------|
-| Payload encryption | JWE with `alg:dir`, `enc:A256GCM`, `zip:DEF` | Encrypts health data at rest in S3           |
+| Payload encryption | JWE with `alg:dir`, `enc:A256GCM`, `zip:DEF`, `cty` header | Encrypts health data at rest in S3 |
 | Key size           | 256-bit (32 bytes)                           | Generated via `java.security.SecureRandom`   |
 | Key delivery       | Embedded in URL fragment (`#shlink:/`)       | Never transmitted to server in HTTP requests |
 | Passcode hashing   | BCrypt                                       | Protects passcodes in the database           |
@@ -559,7 +562,7 @@ DELETE /api/shl/{id}
 
 **Response:** `204 No Content`
 
-Soft-deactivates the SHL. Subsequent access attempts return `410 Gone`.
+Soft-deactivates the SHL. Subsequent access attempts return `404 Not Found` (indistinguishable from a non-existent SHL, per spec).
 
 #### Get Access Log
 
@@ -596,15 +599,16 @@ POST /api/shl/manifest/{manifestId}
 Content-Type: application/json
 
 {
-  "recipient": "Hospital Portal",
-  "passcode": "1234",
-  "embeddedLengthMax": 10485760
+  "recipient": "Hospital Portal",       // required
+  "passcode": "1234",                   // required if P-flag
+  "embeddedLengthMax": 10485760         // optional
 }
 ```
 
 **Response (200):**
 ```json
 {
+  "status": "finalized",
   "files": [
     {
       "contentType": "application/fhir+json",
@@ -613,6 +617,10 @@ Content-Type: application/json
   ]
 }
 ```
+
+The `status` field indicates whether the manifest content may change:
+- `"finalized"` — content will not change (default for non-L-flag SHLs)
+- `"can-change"` — content may be updated over time (L-flag SHLs)
 
 #### File Download
 

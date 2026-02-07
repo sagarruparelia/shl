@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.MissingRequestValueException;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -24,15 +26,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ShlExpiredException.class)
     public Mono<ResponseEntity<Map<String, String>>> handleExpired(ShlExpiredException ex) {
         log.debug("SHL expired: {}", ex.getMessage());
-        return Mono.just(ResponseEntity.status(HttpStatus.GONE)
-                .body(Map.of("error", ex.getMessage())));
+        return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "SHL not found")));
     }
 
     @ExceptionHandler(ShlInactiveException.class)
     public Mono<ResponseEntity<Map<String, String>>> handleInactive(ShlInactiveException ex) {
         log.debug("SHL inactive: {}", ex.getMessage());
-        return Mono.just(ResponseEntity.status(HttpStatus.GONE)
-                .body(Map.of("error", ex.getMessage())));
+        return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "SHL not found")));
     }
 
     @ExceptionHandler(InvalidPasscodeException.class)
@@ -43,6 +45,24 @@ public class GlobalExceptionHandler {
                         .error("Invalid passcode")
                         .remainingAttempts(ex.getRemainingAttempts())
                         .build()));
+    }
+
+    @ExceptionHandler(MissingRequestValueException.class)
+    public Mono<ResponseEntity<Map<String, String>>> handleMissingParam(MissingRequestValueException ex) {
+        log.debug("Missing request value: {}", ex.getMessage());
+        return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", ex.getReason())));
+    }
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    public Mono<ResponseEntity<Map<String, String>>> handleValidation(WebExchangeBindException ex) {
+        String message = ex.getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .findFirst()
+                .orElse("Validation failed");
+        log.debug("Validation error: {}", message);
+        return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", message)));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
