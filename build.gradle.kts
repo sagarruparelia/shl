@@ -24,6 +24,10 @@ repositories {
     mavenCentral()
 }
 
+val nimbusJoseJwtVersion = "10.7"
+val zxingVersion = "3.5.4"
+val awsSdkVersion = "2.41.23"
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
@@ -33,16 +37,18 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok")
 
     // JWE encryption (alg:dir, enc:A256GCM) per SHL spec
-    implementation("com.nimbusds:nimbus-jose-jwt:10.7")
+    implementation("com.nimbusds:nimbus-jose-jwt:$nimbusJoseJwtVersion")
 
     // QR code generation (error correction level M)
-    implementation("com.google.zxing:core:3.5.4")
-    implementation("com.google.zxing:javase:3.5.4")
+    implementation("com.google.zxing:core:$zxingVersion")
+    implementation("com.google.zxing:javase:$zxingVersion")
 
     // AWS S3 (reactive) for encrypted payload + QR code storage
-    implementation(platform("software.amazon.awssdk:bom:2.31.1"))
+    implementation(platform("software.amazon.awssdk:bom:$awsSdkVersion"))
     implementation("software.amazon.awssdk:s3")
     implementation("software.amazon.awssdk:auth")
+    implementation("software.amazon.awssdk:sts")              // IRSA support in EKS
+    implementation("software.amazon.awssdk:http-auth-aws")     // AwsV4HttpSigner (replaces deprecated Aws4Signer)
     implementation("software.amazon.awssdk:netty-nio-client")
 
     // Bean validation, passcode hashing, config metadata

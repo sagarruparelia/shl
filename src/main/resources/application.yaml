@@ -19,7 +19,7 @@ app:
   s3:
     bucket: ${S3_BUCKET:shl-data}
     region: ${AWS_REGION:us-east-1}
-    endpoint: ${S3_ENDPOINT:http://localhost:4566}
+    endpoint: ${S3_ENDPOINT:}
     payload-prefix: payloads/
   healthlake:
     datastore-endpoint: ${HEALTHLAKE_ENDPOINT:}

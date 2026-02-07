@@ -8,11 +8,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.auth.signer.Aws4Signer;
-import software.amazon.awssdk.auth.signer.params.Aws4SignerParams;
-import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.SdkHttpRequest;
 import software.amazon.awssdk.http.SdkHttpMethod;
-import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.http.auth.aws.signer.AwsV4HttpSigner;
+import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 
 import java.net.URI;
 import java.util.List;
@@ -23,14 +22,15 @@ public class HealthLakeService {
 
     private final AppProperties.HealthLakeProperties healthLakeProps;
     private final WebClient webClient;
-    private final Aws4Signer signer;
+    private final AwsV4HttpSigner signer;
     private final DefaultCredentialsProvider credentialsProvider;
 
-    public HealthLakeService(AppProperties appProperties) {
+    public HealthLakeService(AppProperties appProperties,
+                             DefaultCredentialsProvider credentialsProvider) {
         this.healthLakeProps = appProperties.getHealthlake();
         this.webClient = WebClient.builder().build();
-        this.signer = Aws4Signer.create();
-        this.credentialsProvider = DefaultCredentialsProvider.create();
+        this.signer = AwsV4HttpSigner.create();
+        this.credentialsProvider = credentialsProvider;
     }
 
     public Mono<String> fetchBundle(String patientId, FhirCategory category) {
@@ -44,21 +44,19 @@ public class HealthLakeService {
 
             URI uri = URI.create(fullUrl);
 
-            SdkHttpFullRequest sdkRequest = SdkHttpFullRequest.builder()
+            SdkHttpRequest httpRequest = SdkHttpRequest.builder()
                     .uri(uri)
                     .method(SdkHttpMethod.GET)
                     .build();
 
-            Aws4SignerParams signerParams = Aws4SignerParams.builder()
-                    .awsCredentials(credentialsProvider.resolveCredentials())
-                    .signingName("healthlake")
-                    .signingRegion(Region.of(healthLakeProps.getRegion()))
-                    .build();
-
-            SdkHttpFullRequest signedRequest = signer.sign(sdkRequest, signerParams);
+            SignedRequest signedRequest = signer.sign(r -> r
+                    .identity(credentialsProvider.resolveCredentials())
+                    .request(httpRequest)
+                    .putProperty(AwsV4HttpSigner.SERVICE_SIGNING_NAME, "healthlake")
+                    .putProperty(AwsV4HttpSigner.REGION_NAME, healthLakeProps.getRegion()));
 
             WebClient.RequestHeadersSpec<?> spec = webClient.get().uri(uri);
-            signedRequest.headers().forEach((name, values) ->
+            signedRequest.request().headers().forEach((name, values) ->
                     values.forEach(value -> spec.header(name, value)));
 
             log.debug("Fetching {} for patient {} from HealthLake", category.getDisplayName(), patientId);
