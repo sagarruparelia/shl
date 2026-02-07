@@ -1,6 +1,9 @@
 spring:
   application:
     name: shl
+  jackson:
+    deserialization:
+      fail-on-null-for-primitives: false
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb://localhost:27017/shl}
@@ -16,6 +19,7 @@ app:
   s3:
     bucket: ${S3_BUCKET:shl-data}
     region: ${AWS_REGION:us-east-1}
+    endpoint: ${S3_ENDPOINT:http://localhost:4566}
     payload-prefix: payloads/
 
 server:

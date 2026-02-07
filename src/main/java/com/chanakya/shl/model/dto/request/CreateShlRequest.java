@@ -22,7 +22,9 @@ public class CreateShlRequest {
 
     private Long expirationInSeconds;
 
-    private boolean singleUse;
+    @Builder.Default
+    private boolean singleUse = false;
 
-    private boolean longTerm;
+    @Builder.Default
+    private boolean longTerm = false;
 }

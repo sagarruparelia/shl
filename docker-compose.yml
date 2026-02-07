@@ -1,0 +1,22 @@
+services:
+  mongodb:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  localstack:
+    image: localstack/localstack:4
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./init-localstack.sh:/etc/localstack/init/ready.d/init.sh
+
+volumes:
+  mongo-data:
+  localstack-data:

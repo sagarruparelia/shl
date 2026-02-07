@@ -23,6 +23,7 @@ public class AppProperties {
     public static class S3Properties {
         private String bucket;
         private String region;
+        private String endpoint;
         private String payloadPrefix = "payloads/";
     }
 }
