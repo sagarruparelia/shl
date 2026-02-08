@@ -12,7 +12,7 @@ spring:
 
 app:
   base-url: ${APP_BASE_URL:http://localhost:8080}
-  viewer-path: /view.html
+  viewer-path: /view
   default-passcode-attempts: 10
   file-token-ttl-minutes: 60
   qr-code-default-size: 300
