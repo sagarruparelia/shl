@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useShlinkParser } from '../hooks/useShlinkParser';
 import { fetchManifest, fetchDirect, fetchFileContent, PasscodeError } from '../api/protocol';
 import { importKey, decryptJwe } from '../lib/crypto';
@@ -17,8 +17,6 @@ interface DecryptedFile {
 }
 
 type ViewerState =
-  | { step: 'parse_error'; message: string }
-  | { step: 'expired' }
   | { step: 'passcode_required' }
   | { step: 'loading' }
   | { step: 'decrypting' }
@@ -30,6 +28,7 @@ export default function ViewerPage() {
   const [state, setState] = useState<ViewerState | null>(null);
   const [passcodeError, setPasscodeError] = useState<string | null>(null);
   const [passcodeLoading, setPasscodeLoading] = useState(false);
+  const startedRef = useRef(false);
 
   const loadContent = useCallback(async (shl: ShlPayload, passcode?: string) => {
     setState({ step: 'loading' });
@@ -37,7 +36,6 @@ export default function ViewerPage() {
       let manifest: ManifestResponse;
 
       if (hasFlag(shl, 'U')) {
-        // SHL spec: U-flagged links use GET with ?recipient= (direct access)
         manifest = await fetchDirect(shl.url, 'SHL Viewer (Web)');
       } else {
         manifest = await fetchManifest(shl.url, {
@@ -47,7 +45,6 @@ export default function ViewerPage() {
         });
       }
 
-      // SHL spec: "no-longer-valid" means data should not be trusted
       if (manifest.status === 'no-longer-valid') {
         setState({ step: 'error', message: 'This health data is no longer considered valid by the publisher.' });
         return;
@@ -83,7 +80,18 @@ export default function ViewerPage() {
     }
   }, []);
 
-  // Initial state determination
+  // Auto-start: runs once on mount, guarded by ref to prevent StrictMode double-fire
+  useEffect(() => {
+    if (!payload || expired || parseError || startedRef.current) return;
+    startedRef.current = true;
+
+    if (hasFlag(payload, 'P')) {
+      setState({ step: 'passcode_required' });
+    } else {
+      loadContent(payload);
+    }
+  }, [payload, expired, parseError, loadContent]);
+
   if (parseError) {
     return (
       <div className="max-w-xl mx-auto mt-20 px-4">
@@ -96,21 +104,7 @@ export default function ViewerPage() {
     return <ExpirationBanner label={payload?.label} />;
   }
 
-  if (!payload) {
-    return (
-      <div className="max-w-xl mx-auto mt-20 px-4">
-        <ErrorAlert message="No SHL link found in URL" />
-      </div>
-    );
-  }
-
-  // Auto-start loading for non-passcode links
-  if (!state) {
-    if (hasFlag(payload, 'P')) {
-      queueMicrotask(() => setState({ step: 'passcode_required' }));
-      return null;
-    }
-    queueMicrotask(() => loadContent(payload));
+  if (!payload || !state) {
     return null;
   }
 
@@ -150,7 +144,6 @@ export default function ViewerPage() {
           {payload.label && <p className="text-sm text-gray-500 mt-1">{payload.label}</p>}
         </div>
 
-        {/* SHL spec: "can-change" means content may be updated by the publisher */}
         {state.manifestStatus === 'can-change' && (
           <div className="mb-4 rounded-md bg-blue-50 border border-blue-200 px-4 py-3">
             <p className="text-sm text-blue-700">
