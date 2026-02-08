@@ -120,5 +120,5 @@ export interface ShlPayload {
   exp?: number;
   flag?: string;
   label?: string;
-  v: number;
+  v?: number;
 }

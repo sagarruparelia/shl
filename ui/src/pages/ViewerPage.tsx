@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useShlinkParser } from '../hooks/useShlinkParser';
-import { fetchManifest, fetchFileContent, PasscodeError } from '../api/protocol';
+import { fetchManifest, fetchDirect, fetchFileContent, PasscodeError } from '../api/protocol';
 import { importKey, decryptJwe } from '../lib/crypto';
-import type { ShlPayload } from '../types/shl';
+import type { ShlPayload, ManifestResponse } from '../types/shl';
 import { hasFlag } from '../lib/shlink';
 import ExpirationBanner from '../components/viewer/ExpirationBanner';
 import PasscodeForm from '../components/viewer/PasscodeForm';
@@ -22,7 +22,7 @@ type ViewerState =
   | { step: 'passcode_required' }
   | { step: 'loading' }
   | { step: 'decrypting' }
-  | { step: 'success'; files: DecryptedFile[] }
+  | { step: 'success'; files: DecryptedFile[]; manifestStatus?: string }
   | { step: 'error'; message: string };
 
 export default function ViewerPage() {
@@ -34,11 +34,24 @@ export default function ViewerPage() {
   const loadContent = useCallback(async (shl: ShlPayload, passcode?: string) => {
     setState({ step: 'loading' });
     try {
-      const manifest = await fetchManifest(shl.url, {
-        recipient: 'SHL Viewer (Web)',
-        passcode,
-        embeddedLengthMax: 10485760,
-      });
+      let manifest: ManifestResponse;
+
+      if (hasFlag(shl, 'U')) {
+        // SHL spec: U-flagged links use GET with ?recipient= (direct access)
+        manifest = await fetchDirect(shl.url, 'SHL Viewer (Web)');
+      } else {
+        manifest = await fetchManifest(shl.url, {
+          recipient: 'SHL Viewer (Web)',
+          passcode,
+          embeddedLengthMax: 10485760,
+        });
+      }
+
+      // SHL spec: "no-longer-valid" means data should not be trusted
+      if (manifest.status === 'no-longer-valid') {
+        setState({ step: 'error', message: 'This health data is no longer considered valid by the publisher.' });
+        return;
+      }
 
       setState({ step: 'decrypting' });
 
@@ -58,7 +71,7 @@ export default function ViewerPage() {
         decrypted.push({ content, contentType: file.contentType });
       }
 
-      setState({ step: 'success', files: decrypted });
+      setState({ step: 'success', files: decrypted, manifestStatus: manifest.status });
     } catch (e) {
       if (e instanceof PasscodeError) {
         setPasscodeError(`Invalid passcode. ${e.remainingAttempts} attempts remaining.`);
@@ -94,7 +107,6 @@ export default function ViewerPage() {
   // Auto-start loading for non-passcode links
   if (!state) {
     if (hasFlag(payload, 'P')) {
-      // Don't use setState in render — use a microtask
       queueMicrotask(() => setState({ step: 'passcode_required' }));
       return null;
     }
@@ -137,6 +149,15 @@ export default function ViewerPage() {
           <h1 className="text-xl font-semibold">SMART Health Link</h1>
           {payload.label && <p className="text-sm text-gray-500 mt-1">{payload.label}</p>}
         </div>
+
+        {/* SHL spec: "can-change" means content may be updated by the publisher */}
+        {state.manifestStatus === 'can-change' && (
+          <div className="mb-4 rounded-md bg-blue-50 border border-blue-200 px-4 py-3">
+            <p className="text-sm text-blue-700">
+              This is a long-term link. The content may be updated by the publisher.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-4">
           {state.files.map((file, i) =>
