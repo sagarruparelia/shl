@@ -54,6 +54,7 @@ public class ManifestService {
 
     private Mono<ShlDocument> validateShl(ShlDocument shl, ManifestRequest request,
                                            ServerHttpRequest httpRequest) {
+        // Deactivated SHLs return "no-longer-valid" status per spec
         if (!shl.isActive()) {
             return accessLogService.logAccess(shl.getId(), AccessAction.MANIFEST_REQUEST,
                             request.getRecipient(), httpRequest, false, "SHL is inactive")
@@ -201,13 +202,19 @@ public class ManifestService {
                 });
     }
 
-    public Mono<ManifestResponse> processDirectAccess(String manifestId, String recipient,
-                                                        ServerHttpRequest httpRequest) {
+    /**
+     * Spec-compliant U-flag direct access: returns raw JWE string.
+     * Per SHL spec, GET to the manifest URL with ?recipient= returns
+     * the encrypted file directly with Content-Type: application/jose.
+     */
+    public Mono<String> processDirectAccessRawJwe(String manifestId, String recipient,
+                                                   ServerHttpRequest httpRequest) {
         return shlRepository.findByManifestId(manifestId)
                 .switchIfEmpty(Mono.error(new ShlNotFoundException(manifestId)))
                 .flatMap(shl -> {
+                    // For U-flag direct access, inactive SHLs return 404 (no manifest wrapper for "no-longer-valid")
                     if (!shl.isActive()) {
-                        return Mono.error(new ShlInactiveException(shl.getId()));
+                        return Mono.error(new ShlNotFoundException(shl.getId()));
                     }
                     if (shl.getExpiresAt() != null && Instant.now().isAfter(shl.getExpiresAt())) {
                         return Mono.error(new ShlExpiredException(shl.getId()));
@@ -217,27 +224,20 @@ public class ManifestService {
                     }
 
                     return shlContentRepository.findByShlId(shl.getId())
-                            .flatMap(content -> s3StorageService.downloadPayload(content.getS3Key())
-                                    .map(jweString -> ManifestFileEntry.builder()
-                                            .contentType(content.getContentType())
-                                            .embedded(jweString)
-                                            .lastUpdated(content.getCreatedAt() != null ? content.getCreatedAt().toString() : null)
-                                            .build()))
-                            .collectList()
-                            .flatMap((List<ManifestFileEntry> files) -> {
-                                String status = shl.getFlags().contains("L") ? "can-change" : "finalized";
-
+                            .next()
+                            .flatMap(content -> {
+                                Mono<Void> deactivateMono = Mono.empty();
                                 if (shl.isSingleUse()) {
                                     shl.setActive(false);
-                                    return shlRepository.save(shl)
-                                            .then(accessLogService.logAccess(shl.getId(), AccessAction.DIRECT_ACCESS,
-                                                    recipient, httpRequest, true, null))
-                                            .thenReturn(ManifestResponse.builder().status(status).files(files).build());
+                                    deactivateMono = shlRepository.save(shl).then();
                                 }
-                                return accessLogService.logAccess(shl.getId(), AccessAction.DIRECT_ACCESS,
-                                                recipient, httpRequest, true, null)
-                                        .thenReturn(ManifestResponse.builder().status(status).files(files).build());
+
+                                return deactivateMono
+                                        .then(accessLogService.logAccess(shl.getId(), AccessAction.DIRECT_ACCESS,
+                                                recipient, httpRequest, true, null))
+                                        .then(s3StorageService.downloadPayload(content.getS3Key()));
                             });
                 });
     }
+
 }

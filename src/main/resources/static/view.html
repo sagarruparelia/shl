@@ -118,7 +118,9 @@
             return;
         }
 
-        if (shlPayload.flag && shlPayload.flag.includes('P')) {
+        if (shlPayload.flag && shlPayload.flag.includes('U')) {
+            fetchDirectAccess();
+        } else if (shlPayload.flag && shlPayload.flag.includes('P')) {
             document.getElementById('passcode-section').style.display = 'block';
             updateStatus('Passcode required', 'loading');
             document.getElementById('passcode-input').focus();
@@ -134,6 +136,38 @@
         document.getElementById('passcode-submit').disabled = true;
         await fetchManifest(passcode);
         document.getElementById('passcode-submit').disabled = false;
+    }
+
+    async function fetchDirectAccess() {
+        document.getElementById('loading').style.display = 'block';
+        updateStatus('Fetching health data...', 'loading');
+
+        try {
+            const url = new URL(shlPayload.url);
+            url.searchParams.set('recipient', 'SHL Viewer (Web)');
+            const resp = await fetch(url.toString());
+
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.error || 'Server returned ' + resp.status);
+            }
+
+            const contentType = resp.headers.get('Content-Type') || '';
+            if (contentType.includes('application/jose')) {
+                const jwe = await resp.text();
+                const manifest = {
+                    status: 'finalized',
+                    files: [{ contentType: 'application/fhir+json', embedded: jwe }]
+                };
+                await processManifest(manifest);
+            } else {
+                const manifest = await resp.json();
+                await processManifest(manifest);
+            }
+        } catch (e) {
+            document.getElementById('loading').style.display = 'none';
+            showError('Failed to fetch data: ' + e.message);
+        }
     }
 
     async function fetchManifest(passcode) {

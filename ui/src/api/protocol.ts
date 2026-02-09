@@ -30,11 +30,9 @@ export async function fetchManifest(
 }
 
 /**
- * SHL spec: U-flagged links use GET with ?recipient= query param.
- * The server may return either:
- *   - Raw JWE (Content-Type: application/jose) per strict spec
- *   - ManifestResponse JSON (some implementations)
- * We handle both.
+ * SHL spec: U-flagged links use GET to the same `url` with ?recipient= query param.
+ * Response is raw JWE with Content-Type: application/jose.
+ * We also handle JSON ManifestResponse for compatibility with other implementations.
  */
 export async function fetchDirect(
   absoluteUrl: string,
@@ -42,8 +40,6 @@ export async function fetchDirect(
   contentType?: string,
 ): Promise<ManifestResponse> {
   const url = new URL(absoluteUrl);
-  // Adjust path: /manifest/ → /direct/ for our backend
-  url.pathname = url.pathname.replace('/manifest/', '/direct/');
   url.searchParams.set('recipient', recipient);
 
   const res = await fetch(url.toString());
@@ -55,7 +51,6 @@ export async function fetchDirect(
 
   const resContentType = res.headers.get('Content-Type') ?? '';
   if (resContentType.includes('application/jose')) {
-    // Strict spec: raw JWE response
     const jwe = await res.text();
     return {
       status: 'finalized',
@@ -63,7 +58,6 @@ export async function fetchDirect(
     };
   }
 
-  // Our backend returns ManifestResponse JSON
   return res.json() as Promise<ManifestResponse>;
 }
 

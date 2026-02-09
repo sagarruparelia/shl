@@ -10,6 +10,7 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.MissingRequestValueException;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -31,10 +32,10 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ShlInactiveException.class)
-    public Mono<ResponseEntity<Map<String, String>>> handleInactive(ShlInactiveException ex) {
+    public Mono<ResponseEntity<Map<String, Object>>> handleInactive(ShlInactiveException ex) {
         log.debug("SHL inactive: {}", ex.getMessage());
-        return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("error", "SHL not found")));
+        return Mono.just(ResponseEntity.ok()
+                .body(Map.of("status", "no-longer-valid", "files", List.of())));
     }
 
     @ExceptionHandler(InvalidPasscodeException.class)

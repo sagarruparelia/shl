@@ -18,8 +18,15 @@ public class ShlPayloadService {
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
 
+    private static final int MAX_MANIFEST_URL_LENGTH = 128;
+
     public String buildShlinkUrl(ShlDocument shl) {
         String manifestUrl = appProperties.getBaseUrl() + "/api/shl/manifest/" + shl.getManifestId();
+
+        if (manifestUrl.length() > MAX_MANIFEST_URL_LENGTH) {
+            log.warn("Manifest URL exceeds spec limit of {} chars (actual: {}): {}",
+                    MAX_MANIFEST_URL_LENGTH, manifestUrl.length(), manifestUrl);
+        }
 
         ShlPayload payload = ShlPayload.builder()
                 .url(manifestUrl)

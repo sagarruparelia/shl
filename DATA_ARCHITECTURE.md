@@ -139,5 +139,5 @@ spring:
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/shl/manifest/{manifestId}` | Fetch manifest (validates passcode, returns files) |
-| `GET` | `/api/shl/direct/{manifestId}` | Direct access (U flag only) |
+| `GET` | `/api/shl/manifest/{manifestId}?recipient=` | Direct access — U flag (returns raw JWE, `application/jose`) |
 | `GET` | `/api/shl/file/{tokenId}` | Download encrypted file |

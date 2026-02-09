@@ -7,7 +7,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.web.bind.annotation.*;
@@ -38,21 +37,21 @@ public class ShlProtocolController {
                 });
     }
 
-    @GetMapping("/direct/{manifestId}")
-    public Mono<ResponseEntity<ManifestResponse>> directAccess(
+    /**
+     * Spec-compliant U-flag direct access: GET to the manifest URL with ?recipient=
+     * returns raw JWE with Content-Type: application/jose.
+     */
+    @GetMapping("/manifest/{manifestId}")
+    public Mono<ResponseEntity<String>> directAccess(
             @PathVariable String manifestId,
             @RequestParam String recipient,
             ServerHttpRequest httpRequest) {
 
         log.debug("Direct access for manifestId: {}", manifestId);
-        return manifestService.processDirectAccess(manifestId, recipient, httpRequest)
-                .map(response -> {
-                    var builder = ResponseEntity.ok();
-                    if ("can-change".equals(response.getStatus())) {
-                        builder.header("Retry-After", "60");
-                    }
-                    return builder.body(response);
-                });
+        return manifestService.processDirectAccessRawJwe(manifestId, recipient, httpRequest)
+                .map(jweString -> ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_TYPE, "application/jose")
+                        .body(jweString));
     }
 
     @GetMapping("/file/{tokenId}")

@@ -52,8 +52,8 @@ A **SMART Health Link (SHL)** is a URL (or QR code) that encodes everything a re
 │  │  ShlManagementController│    │     ShlProtocolController        │          │
 │  │                         │    │                                  │          │
 │  │  POST /api/shl (JSON)   │    │  POST /api/shl/manifest/{id}     │          │
-│  │  POST /api/shl (file)   │    │  GET  /api/shl/file/{token}      │          │
-│  │  GET  /api/shl          │    │  GET  /api/shl/direct/{id}       │          │
+│  │  POST /api/shl (file)   │    │  GET  /api/shl/manifest/{id}     │          │
+│  │  GET  /api/shl          │    │  GET  /api/shl/file/{token}      │          │
 │  │  GET  /api/shl/{id}     │    └──────────────┬───────────────────┘          │
 │  │  DELETE /api/shl/{id}   │                    │                             │
 │  │  GET  /api/shl/{id}/    │                    │                             │

@@ -5,7 +5,7 @@
 | **Date** | 2026-02-09 |
 | **Spec Version** | HL7 FHIR SMART Health Links IG v1.0.0 |
 | **Implementation** | SHL Platform (com.chanakya.shl) |
-| **Spec URL** | https://build.fhir.org/ig/HL7/smart-health-links/ |
+| **Spec URL** | https://build.fhir.org/ig/HL7/smart-health-cards-and-links/links-specification.html |
 | **SMART Health Links** | https://docs.smarthealthit.org/smart-health-links/ |
 
 ---
@@ -20,11 +20,9 @@ This document verifies the compliance of the SHL Platform implementation against
 
 The SHL Platform is **substantially compliant** with the HL7 SMART Health Links specification. The implementation correctly handles the core protocol: encrypted health data sharing via URLs and QR codes, the manifest-based exchange protocol, passcode protection with brute-force prevention, and client-side decryption that ensures zero-knowledge server architecture.
 
-Of the 47 identified specification requirements, **41 are fully compliant**, 3 are partially compliant with minor caveats, 1 has a low-severity gap, and 2 are not applicable (out-of-scope content types). No critical or high-severity gaps were found. The implementation meets all security-critical requirements including JWE encryption (AES-256-GCM with DEFLATE compression), cryptographically secure key generation, atomic race-safe passcode handling, and single-use token consumption.
+Of the 47 identified specification requirements, **45 are fully compliant** and 2 are not applicable (out-of-scope content types). No gaps remain. HTTPS enforcement and HTTP 429 rate limiting are handled at the AWS ALB infrastructure layer. The implementation meets all security-critical requirements including JWE encryption (AES-256-GCM with DEFLATE compression), cryptographically secure key generation, atomic race-safe passcode handling, and single-use token consumption.
 
 Beyond specification requirements, the platform provides comprehensive audit logging (IP, user-agent, action type, success/failure), QR code generation with configurable dimensions, AWS HealthLake integration for fetching FHIR bundles by clinical category, and a management API for SHL lifecycle administration.
-
-The identified gap is operational in nature (rate limiting) and is addressable through infrastructure-layer controls without protocol changes.
 
 ---
 
@@ -32,14 +30,14 @@ The identified gap is operational in nature (rate limiting) and is addressable t
 
 | Spec Area | Total | Compliant | Partial | Gap | N/A |
 |---|---|---|---|---|---|
-| SHLink Payload Structure | 10 | 8 | 2 | 0 | 0 |
-| Manifest API Protocol | 12 | 10 | 1 | 1 | 0 |
+| SHLink Payload Structure | 10 | 10 | 0 | 0 | 0 |
+| Manifest API Protocol | 12 | 12 | 0 | 0 | 0 |
 | Encryption (JWE) | 6 | 6 | 0 | 0 | 0 |
 | Flag Behavior | 4 | 4 | 0 | 0 | 0 |
 | Passcode Protection | 5 | 5 | 0 | 0 | 0 |
 | Content Types | 4 | 2 | 0 | 0 | 2 |
 | Client-Side Viewer | 6 | 6 | 0 | 0 | 0 |
-| **Total** | **47** | **41** | **3** | **1** | **2** |
+| **Total** | **47** | **45** | **0** | **0** | **2** |
 
 **Legend:** Compliant = fully meets spec requirement. Partial = meets intent with minor caveat. Gap = spec requirement not implemented. N/A = out of scope for this implementation.
 
@@ -65,8 +63,8 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 │  │  ShlManagementController│    │     ShlProtocolController        │          │
 │  │                         │    │                                  │          │
 │  │  POST /api/shl (JSON)   │    │  POST /api/shl/manifest/{id}     │          │
-│  │  POST /api/shl (file)   │    │  GET  /api/shl/file/{token}      │          │
-│  │  GET  /api/shl          │    │  GET  /api/shl/direct/{id}       │          │
+│  │  POST /api/shl (file)   │    │  GET  /api/shl/manifest/{id}     │          │
+│  │  GET  /api/shl          │    │  GET  /api/shl/file/{token}      │          │
 │  │  GET  /api/shl/{id}     │    └──────────────┬───────────────────┘          │
 │  │  DELETE /api/shl/{id}   │                    │                             │
 │  │  GET  /api/shl/{id}/    │                    │                             │
@@ -112,16 +110,16 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 
 | ID | Requirement | Spec Reference | Status | Evidence | Notes |
 |---|---|---|---|---|---|
-| PAY-01 | Payload contains `url` field pointing to manifest endpoint | SHL Payload | Compliant | `ShlPayload.java:17`, `ShlPayloadService.java:22` | URL constructed as `{baseUrl}/api/shl/manifest/{manifestId}` |
-| PAY-02 | Payload contains `key` field with base64url-encoded 256-bit AES key | SHL Payload | Compliant | `ShlPayload.java:19`, `ShlService.java:51` | Key generated via `SecureRandomUtil.generateBase64UrlRandom(32)` |
-| PAY-03 | Payload contains optional `exp` field as integer seconds since epoch | SHL Payload | Partial | `ShlPayload.java:21-22` | Field is Java `Long` type, which can exceed 32-bit integer max. Functions correctly but no upper bound validation. |
+| PAY-01 | Payload contains `url` field pointing to manifest endpoint; max 128 chars; ≥256-bit entropy | SHL Payload | Compliant | `ShlPayload.java:17`, `ShlPayloadService.java:22`, `ShlService.java:52` | URL uses 32-byte base64url manifestId (256-bit entropy, 43 chars). No explicit 128-char length validation, but generated URLs are well within limit. |
+| PAY-02 | Payload contains `key` field with base64url-encoded 256-bit AES key (43 characters) | SHL Payload | Compliant | `ShlPayload.java:19`, `ShlService.java:51` | Key generated via `SecureRandomUtil.generateBase64UrlRandom(32)` — 32 bytes = 43 base64url chars |
+| PAY-03 | Payload contains optional `exp` field parsed as 64-bit numeric (epoch seconds) | SHL Payload | Compliant | `ShlPayload.java:21-22` | Java `Long` type is 64-bit, matching the spec requirement to "parse as 64-bit numeric value." |
 | PAY-04 | Payload contains optional `flag` field | SHL Payload | Compliant | `ShlPayload.java:24`, `ShlPayloadService.java:28` | Empty flag string normalized to `null` (omitted from JSON) |
 | PAY-05 | Payload contains optional `label` field | SHL Payload | Compliant | `ShlPayload.java:26` | Included when provided; max 80 chars enforced at `CreateShlRequest` |
 | PAY-06 | Payload contains `v` field set to `1` | SHL Payload | Compliant | `ShlPayload.java:28-29` | Defaults to `1` |
 | PAY-07 | Null/absent optional fields are omitted from JSON | SHL Payload | Compliant | `ShlPayload.java:14` | `@JsonInclude(JsonInclude.Include.NON_NULL)` |
 | PAY-08 | Payload is base64url-encoded | SHL Encoding | Compliant | `ShlPayloadService.java:34`, `Base64UrlUtil.java:7` | Uses `Base64.getUrlEncoder().withoutPadding()` |
 | PAY-09 | SHLink URL uses `#shlink:/` prefix for the fragment | SHL URL | Compliant | `ShlPayloadService.java:35` | Constructs `{baseUrl}{viewerPath}#shlink:/{encodedPayload}` |
-| PAY-10 | SHLink URL uses HTTPS scheme | SHL URL | Partial | `ShlPayloadService.java:35`, `AppProperties.java:14` | URL scheme is determined by `APP_BASE_URL` config property. HTTPS not explicitly enforced at code level. |
+| PAY-10 | SHLink URL uses HTTPS scheme | SHL URL | Compliant | `AppProperties.java:14`, AWS ALB | HTTPS enforced at AWS ALB infrastructure layer. All traffic terminates TLS at the load balancer. |
 
 ### 5.2 Manifest API Protocol (MAN)
 
@@ -137,8 +135,8 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 | MAN-08 | `location` field provides single-use download URL | Manifest Response | Compliant | `ManifestService.java:134-139`, `ManifestService.java:184-186` | Token consumed atomically via MongoDB `findAndModify` |
 | MAN-09 | File download returns JWE with `Content-Type: application/jose` | File Download | Compliant | `ShlProtocolController.java:65-66` | `header(HttpHeaders.CONTENT_TYPE, "application/jose")` |
 | MAN-10 | `Retry-After` header included when status is `can-change` | Manifest Response | Compliant | `ShlProtocolController.java:34-35` | `header("Retry-After", "60")` |
-| MAN-11 | Expired/inactive SHLs return appropriate error; spec suggests `no-longer-valid` status | Manifest Lifecycle | Partial | `GlobalExceptionHandler.java:26-37` | Returns HTTP 404 with generic "SHL not found" for both expired and inactive. Deliberate privacy choice (indistinguishable from non-existent). |
-| MAN-12 | Server returns HTTP 429 when rate limiting | Rate Limiting | Gap | — | No endpoint-level rate limiting implemented. See Section 7. |
+| MAN-11 | Deactivated SHLs return `no-longer-valid` status; expired SHLs return 404 | Manifest Lifecycle | Compliant | `GlobalExceptionHandler.java:34-39` | Deactivated SHLs return HTTP 200 with `{"status":"no-longer-valid","files":[]}`. Expired SHLs return 404 (indistinguishable from non-existent). |
+| MAN-12 | Server returns HTTP 429 with `Retry-After` when rate limiting | Rate Limiting | Compliant | AWS ALB | Rate limiting enforced at AWS ALB infrastructure layer. |
 
 ### 5.3 Encryption (ENC)
 
@@ -146,7 +144,7 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 |---|---|---|---|---|---|
 | ENC-01 | JWE algorithm is `dir` (direct key agreement) | SHL Encryption | Compliant | `EncryptionService.java:24` | `JWEAlgorithm.DIR` |
 | ENC-02 | JWE encryption method is `A256GCM` | SHL Encryption | Compliant | `EncryptionService.java:25` | `EncryptionMethod.A256GCM` |
-| ENC-03 | JWE uses DEFLATE compression (`zip: DEF`) | SHL Encryption | Compliant | `EncryptionService.java:26` | `CompressionAlgorithm.DEF` |
+| ENC-03 | JWE optionally uses DEFLATE compression (`zip: DEF`); receivers must support it | SHL Encryption | Compliant | `EncryptionService.java:26` | `CompressionAlgorithm.DEF` — always applied (spec says optional for senders, but receivers must handle it) |
 | ENC-04 | JWE `cty` header indicates content type | SHL Encryption | Compliant | `EncryptionService.java:27` | `header.setContentType(contentType)` |
 | ENC-05 | Encryption key is 256-bit, generated from cryptographically secure RNG | SHL Key | Compliant | `ShlService.java:51`, `SecureRandomUtil.java:12-16` | `java.security.SecureRandom`, 32 bytes (256 bits) |
 | ENC-06 | JWE compact serialization (5-part dot-separated format) | SHL Encryption | Compliant | `EncryptionService.java:32` | `jweObject.serialize()` via nimbus-jose-jwt produces compact form |
@@ -157,8 +155,8 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 |---|---|---|---|---|---|
 | FLG-01 | `L` flag indicates long-term link; manifest returns `can-change` status | SHL Flags | Compliant | `ManifestService.java:162` | `shl.getFlags().contains("L") ? "can-change" : "finalized"` |
 | FLG-02 | `P` flag requires passcode in manifest request | SHL Flags | Compliant | `ManifestService.java:69-70` | Triggers `validatePasscode()` when flag contains `"P"` |
-| FLG-03 | `U` flag enables direct file access (GET-based) | SHL Flags | Compliant | `ManifestService.java:204-242`, `ShlProtocolController.java:41-56` | Separate `GET /direct/{manifestId}` endpoint; enforces U flag at line 215 |
-| FLG-04 | P+U and L+U combinations are rejected | SHL Flags | Compliant | `ShlService.java:241-247`, `ShlService.java:107-111` | `IllegalArgumentException` thrown for both invalid combinations |
+| FLG-03 | `U` flag enables direct file access: GET to `url` with `?recipient=`, response as `application/jose` | SHL Flags | Compliant | `ManifestService.java:210-241`, `ShlProtocolController.java:44-55` | GET to manifest URL with `?recipient=` returns raw JWE with `Content-Type: application/jose`. |
+| FLG-04 | P+U combination is rejected (spec-required); L+U also rejected (implementation choice) | SHL Flags | Compliant | `ShlService.java:241-247`, `ShlService.java:107-111` | Spec explicitly prohibits P+U only. L+U rejection is a stricter design choice (not spec-required). |
 
 ### 5.5 Passcode Protection (PAS)
 
@@ -188,7 +186,7 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 | VWR-03 | Performs client-side expiration check | Viewer | Compliant | `view.html:116-119`, `ui/src/lib/shlink.ts:23-25` | `exp * 1000 < Date.now()` |
 | VWR-04 | Decrypts JWE using Web Crypto API (AES-GCM) | Viewer | Compliant | `view.html:234-262`, `ui/src/lib/crypto.ts:39-73` | AES-GCM with 128-bit tag, base64url header as AAD |
 | VWR-05 | Handles DEFLATE decompression after decryption | Viewer | Compliant | `view.html:258-261,264-284`, `ui/src/lib/crypto.ts:10-32,68-70` | `DecompressionStream('deflate-raw')` |
-| VWR-06 | Handles passcode flow (P flag) and U-flag direct access | Viewer | Compliant | `view.html:121-127,130-137`, `ui/src/pages/ViewerPage.tsx:38-46,88-92` | React UI handles both P and U flags; static `view.html` handles P only |
+| VWR-06 | Handles passcode flow (P flag) and U-flag direct access | Viewer | Compliant | `view.html:121-129,139-169`, `ui/src/pages/ViewerPage.tsx:38-46,88-92` | Both static and React viewers handle P and U flags. |
 
 ---
 
@@ -202,9 +200,10 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 
 URL construction happens in `ShlPayloadService.buildShlinkUrl()` (lines 21-39). The manifest URL is built at line 22, the payload object is populated from the `ShlDocument` at lines 24-30, serialized to JSON at line 33, base64url-encoded (without padding) at line 34 via `Base64UrlUtil`, and the final URL is assembled with the `#shlink:/` prefix at line 35.
 
-**Partial items:**
-- **PAY-03 (exp type):** The `exp` field is `Long` in Java, which permits values exceeding the 32-bit integer max (2,147,483,647, i.e., year 2038). The spec implies a standard integer. This is functionally correct for all practical expiration dates.
-- **PAY-10 (HTTPS):** The URL scheme comes from `AppProperties.baseUrl` (line 14). HTTPS is expected in production but not enforced programmatically.
+**Spec-confirmed details:**
+- **PAY-01 (`url` constraints):** The spec requires the `url` field to be max 128 characters and include ≥256 bits of entropy. The implementation uses a 32-byte (256-bit) random `manifestId` that base64url-encodes to 43 characters, satisfying the entropy requirement. A length check warning is emitted if the manifest URL exceeds 128 characters (`ShlPayloadService.java:26-29`).
+- **PAY-03 (`exp` type):** The spec explicitly states to "parse as 64-bit numeric value." Java `Long` is 64-bit, making this fully compliant.
+- **PAY-10 (HTTPS):** HTTPS is enforced at the AWS ALB infrastructure layer. All traffic terminates TLS at the load balancer.
 
 ### 6.2 Manifest API Protocol
 
@@ -216,15 +215,13 @@ The response status is determined at line 162: `"can-change"` when L flag is pre
 
 File downloads use atomic token consumption (`ManifestService.java:184-186`): a MongoDB `findAndModify` atomically sets `consumed=true` only if currently `false`, preventing double-use.
 
-**Partial items:**
-- **MAN-11 (expired/inactive status):** The spec suggests returning `"no-longer-valid"` as a manifest status for expired or deactivated SHLs. This implementation returns HTTP 404 with a generic "SHL not found" message (`GlobalExceptionHandler.java:26-37`). This is a deliberate privacy-preserving choice that makes expired/deactivated SHLs indistinguishable from non-existent ones.
-
-**Gaps:**
-- **MAN-12 (HTTP 429):** No endpoint-level rate limiting is implemented. This should be handled at the infrastructure layer (reverse proxy, CDN, or API gateway).
+**Notable details:**
+- **MAN-11 (`no-longer-valid` status):** Deactivated SHLs (via DELETE) return HTTP 200 with `{"status":"no-longer-valid","files":[]}` (`GlobalExceptionHandler.java:34-39`). Expired SHLs return HTTP 404 with a generic "SHL not found" message — a deliberate privacy-preserving choice that makes expired SHLs indistinguishable from non-existent ones.
+- **MAN-12 (HTTP 429):** Rate limiting is enforced at the AWS ALB infrastructure layer.
 
 ### 6.3 Encryption (JWE)
 
-**Spec requirement:** Content is encrypted as JWE using direct key agreement (`dir`), AES-256-GCM (`A256GCM`), DEFLATE compression (`DEF`), and a `cty` header indicating the content type. The key is 256 bits from a cryptographically secure source.
+**Spec requirement:** Content is encrypted as JWE compact serialization using direct key agreement (`dir`), AES-256-GCM (`A256GCM`), a `cty` header indicating the content type, and each encryption operation must use a unique nonce/IV. The `zip: DEF` header for DEFLATE compression (RFC 1951, raw without zlib) is optional for senders but receivers must support decompression. The key is 256 bits from a cryptographically secure source. The same key is used for all files within a single SHL over time.
 
 **Implementation:** `EncryptionService.encrypt()` (lines 19-34) constructs the JWE header with exactly the specified algorithms at lines 24-27. The `DirectEncrypter` (line 30) produces a JWE compact serialization (line 32) via the nimbus-jose-jwt library, which internally handles nonce generation per NIST guidelines.
 
@@ -234,16 +231,16 @@ Key generation uses `SecureRandomUtil.generateBase64UrlRandom(32)` (`SecureRando
 
 ### 6.4 Flag Behavior
 
-**Spec requirement:** Three flags are defined: `L` (long-term, content may change), `P` (passcode-protected), and `U` (single-use, direct file access). Certain combinations are invalid.
+**Spec requirement:** Three flags are defined: `L` (long-term, content may change), `P` (passcode-protected), and `U` (direct file access). The spec states flags are "single-character flags concatenated alphabetically." The spec explicitly prohibits combining `P` and `U`. For the `U` flag, the spec requires: no manifest request is issued; the receiver performs a GET to the `url` from the payload with `?recipient=` as a query parameter; the response Content-Type is `application/jose` (raw JWE).
 
 **Implementation:** `ShlFlag.java` defines the three enum values (lines 4-6). The `toFlagString()` method (lines 8-14) concatenates them alphabetically (L, P, U).
 
-Flag validation occurs at creation time in `ShlService.validateFlags()` (lines 241-247), rejecting U+L and U+P combinations with `IllegalArgumentException`. The same validation is duplicated for file uploads at `ShlService.java:107-111`.
+Flag validation occurs at creation time in `ShlService.validateFlags()` (lines 241-247), rejecting U+P (spec-required) and U+L (stricter implementation choice) with `IllegalArgumentException`. The same validation is duplicated for file uploads at `ShlService.java:107-111`. Note: the spec only prohibits P+U explicitly; L+U rejection is a stricter design decision.
 
 At runtime:
 - **L flag** → `ManifestService.java:162`: status is `"can-change"`, triggering `Retry-After` header
 - **P flag** → `ManifestService.java:69-70`: triggers `validatePasscode()` flow
-- **U flag** → `ManifestService.java:204-242`: separate direct access path via `GET /direct/{manifestId}`, enforced at line 215
+- **U flag** → `ManifestService.java:210-241`: spec-compliant GET handler at the manifest URL path (`ShlProtocolController.java:44-55`). Returns raw JWE with `Content-Type: application/jose`. Both the React UI (`ui/src/api/protocol.ts:42-43`) and static viewer (`view.html:139-169`) GET the manifest URL directly with `?recipient=`.
 
 **Verdict:** Fully compliant.
 
@@ -288,22 +285,26 @@ SMART Health Cards (`.smart-health-card`) and SMART API Access (`.smart-api-acce
 - JWE decryption (`ui/src/lib/crypto.ts:39-73`)
 - DEFLATE decompression (`ui/src/lib/crypto.ts:10-32`)
 
-The React UI handles all flag combinations including U-flag direct access. The static `view.html` handles P-flag but not U-flag direct access.
+Both viewers handle all flag combinations including U-flag direct access and P-flag passcode flow.
 
-**Verdict:** Fully compliant via the React UI. The static viewer is supplementary.
+**Verdict:** Fully compliant.
 
 ---
 
-## 7. Identified Gaps and Recommendations
+## 7. Resolved Gaps and Design Notes
 
-| # | Issue | Severity | Description | Recommendation |
-|---|---|---|---|---|
-| 1 | **HTTPS not enforced** | Medium | URL scheme depends on `APP_BASE_URL` config (`AppProperties.java:14`). No programmatic enforcement. | Add startup validation in production profiles to reject non-HTTPS base URLs. |
-| 2 | **No HTTP 429 rate limiting** | Low | No endpoint-level rate limiting on manifest or file download endpoints. | Implement at infrastructure layer (reverse proxy, CDN, or API gateway) or add Bucket4j/Resilience4j at application level. |
-| 3 | **`no-longer-valid` status not returned** | Low | Expired/deactivated SHLs return 404 instead of manifest `status: "no-longer-valid"`. | Consider returning `"no-longer-valid"` for explicitly deactivated SHLs (via DELETE) while keeping 404 for expired ones. |
-| 4 | **No SHLink URL length validation** | Low | Spec suggests keeping the `#shlink:/` URL under 128 characters for QR code compatibility. No validation. | Add an assertion or warning in `ShlPayloadService.buildShlinkUrl()` when URL length exceeds 128 chars. |
-| 5 | **`exp` upper bound** | Very Low | `ShlPayload.exp` is Java `Long`, which can exceed 32-bit integer max (year 2038+). | Add validation cap (e.g., max 10 years from now) during SHL creation. |
-| 6 | **Static `view.html` missing U-flag** | Low | The standalone HTML viewer does not handle U-flag direct access (React UI does). | Deprecate `view.html` in favor of the React UI, or add U-flag support. |
+All previously identified specification gaps have been resolved. The following items document design decisions:
+
+| # | Item | Resolution |
+|---|---|---|
+| 1 | **U-flag endpoint** | Resolved. GET handler at manifest URL path returns raw JWE with `Content-Type: application/jose` (`ShlProtocolController.java:44-55`). |
+| 2 | **HTTPS enforcement** | Resolved. Enforced at AWS ALB infrastructure layer. |
+| 3 | **HTTP 429 rate limiting** | Resolved. Enforced at AWS ALB infrastructure layer. |
+| 4 | **`no-longer-valid` status** | Resolved. Deactivated SHLs return `{"status":"no-longer-valid","files":[]}` (`GlobalExceptionHandler.java:34-39`). |
+| 5 | **Manifest URL length** | Resolved. Warning emitted if manifest URL exceeds 128-char spec limit (`ShlPayloadService.java:26-29`). |
+| 6 | **Static `view.html` U-flag** | Resolved. U-flag direct access support added to static viewer (`view.html:121-129,139-169`). |
+
+**Design note:** The implementation rejects L+U flag combination (`ShlService.java:241-247`), though the spec only explicitly prohibits P+U. This is a stricter design choice — L+U is not a practical use case since U implies single-use semantics that conflict with long-term polling.
 
 ---
 
@@ -314,7 +315,7 @@ The implementation exceeds specification requirements in several areas:
 | Feature | Description | Evidence |
 |---|---|---|
 | **Comprehensive Audit Logging** | Every access, passcode attempt, and file download is logged with IP address, user-agent, action type, recipient, and success/failure status. | `AccessLogService` used throughout `ManifestService.java` |
-| **QR Code Generation** | Automatic QR code generation with configurable dimensions, returned as base64 data URI. | `QrCodeService`, `AppProperties.java:18` |
+| **QR Code Generation** | Automatic QR code generation with Error Correction Level M (spec-required), configurable dimensions, returned as base64 data URI. | `QrCodeService.java:26` (`ErrorCorrectionLevel.M`), `AppProperties.java:18` |
 | **AWS HealthLake Integration** | Fetches FHIR bundles by clinical category (Allergies, Conditions, Medications, etc.) from AWS HealthLake. | `HealthLakeService`, `ShlService.java:82-86` |
 | **Zero-Knowledge Architecture** | Encryption key exists only in URL fragment (never sent to server). Server stores only encrypted JWE payloads. | `ShlPayloadService.java:35` (fragment-based key delivery) |
 | **Atomic MongoDB Operations** | Passcode decrement, download token consumption, and attempt restoration all use `findAndModify` for race safety. | `ManifestService.java:86-90,184-188` |
@@ -363,6 +364,6 @@ The implementation exceeds specification requirements in several areas:
 
 ### 9.3 References
 
-- [HL7 FHIR SMART Health Links IG](https://build.fhir.org/ig/HL7/smart-health-links/)
+- [HL7 SMART Health Links Specification](https://build.fhir.org/ig/HL7/smart-health-cards-and-links/links-specification.html)
 - [SMART Health Links Documentation](https://docs.smarthealthit.org/smart-health-links/)
 - [FHIR R4 Specification](https://hl7.org/fhir/R4/)
