@@ -18,7 +18,7 @@ This document verifies the compliance of the SHL Platform implementation against
 
 ## 2. Executive Summary
 
-The SHL Platform is **substantially compliant** with the HL7 SMART Health Links specification. The implementation correctly handles the core protocol: encrypted health data sharing via URLs and QR codes, the manifest-based exchange protocol, passcode protection with brute-force prevention, and client-side decryption that ensures zero-knowledge server architecture.
+The SHL Platform is **fully compliant** with the HL7 SMART Health Links specification. The implementation correctly handles the core protocol: encrypted health data sharing via URLs and QR codes, the manifest-based exchange protocol, passcode protection with brute-force prevention, and client-side decryption that ensures zero-knowledge server architecture.
 
 Of the 47 identified specification requirements, **45 are fully compliant** and 2 are not applicable (out-of-scope content types). No gaps remain. HTTPS enforcement and HTTP 429 rate limiting are handled at the AWS ALB infrastructure layer. The implementation meets all security-critical requirements including JWE encryption (AES-256-GCM with DEFLATE compression), cryptographically secure key generation, atomic race-safe passcode handling, and single-use token consumption.
 
@@ -110,28 +110,28 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 
 | ID | Requirement | Spec Reference | Status | Evidence | Notes |
 |---|---|---|---|---|---|
-| PAY-01 | Payload contains `url` field pointing to manifest endpoint; max 128 chars; ≥256-bit entropy | SHL Payload | Compliant | `ShlPayload.java:17`, `ShlPayloadService.java:22`, `ShlService.java:52` | URL uses 32-byte base64url manifestId (256-bit entropy, 43 chars). No explicit 128-char length validation, but generated URLs are well within limit. |
+| PAY-01 | Payload contains `url` field pointing to manifest endpoint; max 128 chars; ≥256-bit entropy | SHL Payload | Compliant | `ShlPayload.java:17`, `ShlPayloadService.java:24`, `ShlService.java:52` | URL uses 32-byte base64url manifestId (256-bit entropy, 43 chars). Length check warning emitted if URL exceeds 128 chars. |
 | PAY-02 | Payload contains `key` field with base64url-encoded 256-bit AES key (43 characters) | SHL Payload | Compliant | `ShlPayload.java:19`, `ShlService.java:51` | Key generated via `SecureRandomUtil.generateBase64UrlRandom(32)` — 32 bytes = 43 base64url chars |
 | PAY-03 | Payload contains optional `exp` field parsed as 64-bit numeric (epoch seconds) | SHL Payload | Compliant | `ShlPayload.java:21-22` | Java `Long` type is 64-bit, matching the spec requirement to "parse as 64-bit numeric value." |
-| PAY-04 | Payload contains optional `flag` field | SHL Payload | Compliant | `ShlPayload.java:24`, `ShlPayloadService.java:28` | Empty flag string normalized to `null` (omitted from JSON) |
+| PAY-04 | Payload contains optional `flag` field | SHL Payload | Compliant | `ShlPayload.java:24`, `ShlPayloadService.java:35` | Empty flag string normalized to `null` (omitted from JSON) |
 | PAY-05 | Payload contains optional `label` field | SHL Payload | Compliant | `ShlPayload.java:26` | Included when provided; max 80 chars enforced at `CreateShlRequest` |
 | PAY-06 | Payload contains `v` field set to `1` | SHL Payload | Compliant | `ShlPayload.java:28-29` | Defaults to `1` |
 | PAY-07 | Null/absent optional fields are omitted from JSON | SHL Payload | Compliant | `ShlPayload.java:14` | `@JsonInclude(JsonInclude.Include.NON_NULL)` |
-| PAY-08 | Payload is base64url-encoded | SHL Encoding | Compliant | `ShlPayloadService.java:34`, `Base64UrlUtil.java:7` | Uses `Base64.getUrlEncoder().withoutPadding()` |
-| PAY-09 | SHLink URL uses `#shlink:/` prefix for the fragment | SHL URL | Compliant | `ShlPayloadService.java:35` | Constructs `{baseUrl}{viewerPath}#shlink:/{encodedPayload}` |
+| PAY-08 | Payload is base64url-encoded | SHL Encoding | Compliant | `ShlPayloadService.java:41`, `Base64UrlUtil.java:7` | Uses `Base64.getUrlEncoder().withoutPadding()` |
+| PAY-09 | SHLink URL uses `#shlink:/` prefix for the fragment | SHL URL | Compliant | `ShlPayloadService.java:42` | Constructs `{baseUrl}{viewerPath}#shlink:/{encodedPayload}` |
 | PAY-10 | SHLink URL uses HTTPS scheme | SHL URL | Compliant | `AppProperties.java:14`, AWS ALB | HTTPS enforced at AWS ALB infrastructure layer. All traffic terminates TLS at the load balancer. |
 
 ### 5.2 Manifest API Protocol (MAN)
 
 | ID | Requirement | Spec Reference | Status | Evidence | Notes |
 |---|---|---|---|---|---|
-| MAN-01 | Manifest endpoint accepts POST requests | Manifest API | Compliant | `ShlProtocolController.java:24` | `@PostMapping("/manifest/{manifestId}")` |
+| MAN-01 | Manifest endpoint accepts POST requests | Manifest API | Compliant | `ShlProtocolController.java:23` | `@PostMapping("/manifest/{manifestId}")` |
 | MAN-02 | Request body contains required `recipient` field | Manifest Request | Compliant | `ManifestRequest.java:15-16` | `@NotBlank(message = "recipient is required")` |
 | MAN-03 | Request body contains optional `passcode` field | Manifest Request | Compliant | `ManifestRequest.java:18` | Conditionally validated when P flag is set |
 | MAN-04 | Request body contains optional `embeddedLengthMax` field | Manifest Request | Compliant | `ManifestRequest.java:20` | Controls inline vs. download delivery |
-| MAN-05 | Response contains `status` field (`finalized` or `can-change`) | Manifest Response | Compliant | `ManifestService.java:162`, `ManifestResponse.java:18` | `"can-change"` when L flag present, `"finalized"` otherwise |
+| MAN-05 | Response contains `status` field (`finalized` or `can-change`) | Manifest Response | Compliant | `ManifestService.java:163`, `ManifestResponse.java:18` | `"can-change"` when L flag present, `"finalized"` otherwise |
 | MAN-06 | Response contains `files` array with `contentType`, and `embedded` or `location` | Manifest Response | Compliant | `ManifestService.java:128-151`, `ManifestFileEntry.java:16-18` | Mutually exclusive fields; `@JsonInclude(NON_NULL)` omits the unused one |
-| MAN-07 | `embedded` field contains JWE compact serialization when file fits `embeddedLengthMax` | Manifest Response | Compliant | `ManifestService.java:123-132` | Size check at line 127: `jweString.length() <= maxEmbedded` |
+| MAN-07 | `embedded` field contains JWE compact serialization when file fits `embeddedLengthMax` | Manifest Response | Compliant | `ManifestService.java:124-133` | Size check at line 128: `jweString.length() <= maxEmbedded` |
 | MAN-08 | `location` field provides single-use download URL | Manifest Response | Compliant | `ManifestService.java:134-139`, `ManifestService.java:184-186` | Token consumed atomically via MongoDB `findAndModify` |
 | MAN-09 | File download returns JWE with `Content-Type: application/jose` | File Download | Compliant | `ShlProtocolController.java:65-66` | `header(HttpHeaders.CONTENT_TYPE, "application/jose")` |
 | MAN-10 | `Retry-After` header included when status is `can-change` | Manifest Response | Compliant | `ShlProtocolController.java:34-35` | `header("Retry-After", "60")` |
@@ -153,7 +153,7 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 
 | ID | Requirement | Spec Reference | Status | Evidence | Notes |
 |---|---|---|---|---|---|
-| FLG-01 | `L` flag indicates long-term link; manifest returns `can-change` status | SHL Flags | Compliant | `ManifestService.java:162` | `shl.getFlags().contains("L") ? "can-change" : "finalized"` |
+| FLG-01 | `L` flag indicates long-term link; manifest returns `can-change` status | SHL Flags | Compliant | `ManifestService.java:163` | `shl.getFlags().contains("L") ? "can-change" : "finalized"` |
 | FLG-02 | `P` flag requires passcode in manifest request | SHL Flags | Compliant | `ManifestService.java:69-70` | Triggers `validatePasscode()` when flag contains `"P"` |
 | FLG-03 | `U` flag enables direct file access: GET to `url` with `?recipient=`, response as `application/jose` | SHL Flags | Compliant | `ManifestService.java:210-241`, `ShlProtocolController.java:44-55` | GET to manifest URL with `?recipient=` returns raw JWE with `Content-Type: application/jose`. |
 | FLG-04 | P+U combination is rejected (spec-required); L+U also rejected (implementation choice) | SHL Flags | Compliant | `ShlService.java:241-247`, `ShlService.java:107-111` | Spec explicitly prohibits P+U only. L+U rejection is a stricter design choice (not spec-required). |
@@ -162,11 +162,11 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 
 | ID | Requirement | Spec Reference | Status | Evidence | Notes |
 |---|---|---|---|---|---|
-| PAS-01 | Passcode is verified server-side (not stored in plaintext) | Passcode | Compliant | `ShlService.java:61-62`, `ManifestService.java:100` | BCrypt hash stored; verified via `passwordEncoder.matches()` |
+| PAS-01 | Passcode is verified server-side (not stored in plaintext) | Passcode | Compliant | `ShlService.java:61-62`, `ManifestService.java:101` | BCrypt hash stored; verified via `passwordEncoder.matches()` |
 | PAS-02 | Invalid passcode returns HTTP 401 with `remainingAttempts` | Passcode | Compliant | `GlobalExceptionHandler.java:40-48` | Returns `{"error":"Invalid passcode","remainingAttempts":N}` |
 | PAS-03 | Failed attempts are decremented atomically (race-safe) | Passcode | Compliant | `ManifestService.java:86-90` | MongoDB `findAndModify` with `passcodeFailuresRemaining > 0` and `inc(-1)` |
 | PAS-04 | SHL is deactivated when attempts are exhausted | Passcode | Compliant | `ManifestService.java:91-97` | Sets `active(false)` and returns `InvalidPasscodeException(0)` |
-| PAS-05 | Correct passcode restores the attempt counter | Passcode | Compliant | `ManifestService.java:100-105` | `inc(passcodeFailuresRemaining, 1)` on successful match |
+| PAS-05 | Correct passcode restores the attempt counter | Passcode | Compliant | `ManifestService.java:101-106` | `inc(passcodeFailuresRemaining, 1)` on successful match |
 
 ### 5.6 Content Types (CTY)
 
@@ -198,7 +198,7 @@ The platform uses a two-layer storage architecture that enforces zero-knowledge 
 
 **Implementation:** The `ShlPayload` model (`ShlPayload.java`) defines all six fields. The `v` field defaults to `1` (line 29). `@JsonInclude(NON_NULL)` at line 14 ensures optional null fields are omitted from the serialized JSON.
 
-URL construction happens in `ShlPayloadService.buildShlinkUrl()` (lines 21-39). The manifest URL is built at line 22, the payload object is populated from the `ShlDocument` at lines 24-30, serialized to JSON at line 33, base64url-encoded (without padding) at line 34 via `Base64UrlUtil`, and the final URL is assembled with the `#shlink:/` prefix at line 35.
+URL construction happens in `ShlPayloadService.buildShlinkUrl()` (lines 23-46). The manifest URL is built at line 24, the payload object is populated from the `ShlDocument` at lines 31-37, serialized to JSON at line 40, base64url-encoded (without padding) at line 41 via `Base64UrlUtil`, and the final URL is assembled with the `#shlink:/` prefix at line 42.
 
 **Spec-confirmed details:**
 - **PAY-01 (`url` constraints):** The spec requires the `url` field to be max 128 characters and include ≥256 bits of entropy. The implementation uses a 32-byte (256-bit) random `manifestId` that base64url-encodes to 43 characters, satisfying the entropy requirement. A length check warning is emitted if the manifest URL exceeds 128 characters (`ShlPayloadService.java:26-29`).
@@ -209,9 +209,9 @@ URL construction happens in `ShlPayloadService.buildShlinkUrl()` (lines 21-39). 
 
 **Spec requirement:** The manifest endpoint accepts POST requests with `recipient` (required), `passcode` (conditional), and `embeddedLengthMax` (optional). It returns a JSON response with `status` and `files`, where each file has a `contentType` and either `embedded` or `location`.
 
-**Implementation:** `ShlProtocolController` maps `POST /api/shl/manifest/{manifestId}` (line 24). The `ManifestRequest` DTO enforces `@NotBlank` on `recipient` (line 15-16). `ManifestService.buildManifest()` (lines 116-169) implements the `embeddedLengthMax` negotiation: if the JWE fits within the limit, it is returned as `embedded` (lines 123-132); otherwise, a single-use download token is created and returned as `location` (lines 134-139).
+**Implementation:** `ShlProtocolController` maps `POST /api/shl/manifest/{manifestId}` (line 23). The `ManifestRequest` DTO enforces `@NotBlank` on `recipient` (line 15-16). `ManifestService.buildManifest()` (lines 117-169) implements the `embeddedLengthMax` negotiation: if the JWE fits within the limit, it is returned as `embedded` (lines 124-133); otherwise, a single-use download token is created and returned as `location` (lines 135-140).
 
-The response status is determined at line 162: `"can-change"` when L flag is present, `"finalized"` otherwise. The `Retry-After: 60` header is added for `"can-change"` responses at `ShlProtocolController.java:34-35`.
+The response status is determined at line 163: `"can-change"` when L flag is present, `"finalized"` otherwise. The `Retry-After: 60` header is added for `"can-change"` responses at `ShlProtocolController.java:34-35`.
 
 File downloads use atomic token consumption (`ManifestService.java:184-186`): a MongoDB `findAndModify` atomically sets `consumed=true` only if currently `false`, preventing double-use.
 
@@ -238,8 +238,8 @@ Key generation uses `SecureRandomUtil.generateBase64UrlRandom(32)` (`SecureRando
 Flag validation occurs at creation time in `ShlService.validateFlags()` (lines 241-247), rejecting U+P (spec-required) and U+L (stricter implementation choice) with `IllegalArgumentException`. The same validation is duplicated for file uploads at `ShlService.java:107-111`. Note: the spec only prohibits P+U explicitly; L+U rejection is a stricter design decision.
 
 At runtime:
-- **L flag** → `ManifestService.java:162`: status is `"can-change"`, triggering `Retry-After` header
-- **P flag** → `ManifestService.java:69-70`: triggers `validatePasscode()` flow
+- **L flag** → `ManifestService.java:163`: status is `"can-change"`, triggering `Retry-After` header
+- **P flag** → `ManifestService.java:70-71`: triggers `validatePasscode()` flow
 - **U flag** → `ManifestService.java:210-241`: spec-compliant GET handler at the manifest URL path (`ShlProtocolController.java:44-55`). Returns raw JWE with `Content-Type: application/jose`. Both the React UI (`ui/src/api/protocol.ts:42-43`) and static viewer (`view.html:139-169`) GET the manifest URL directly with `?recipient=`.
 
 **Verdict:** Fully compliant.
@@ -251,10 +251,10 @@ At runtime:
 **Implementation:** Passcode hashing uses BCrypt (`ShlService.java:61-62`). The verification flow in `ManifestService.validatePasscode()` (lines 76-113) implements a secure decrement-before-verify pattern:
 
 1. **Atomic decrement** (lines 86-90): MongoDB `findAndModify` decrements `passcodeFailuresRemaining` only if `> 0`, preventing race conditions.
-2. **Attempts exhausted** (lines 91-97): If no document is found (counter at zero), the SHL is deactivated.
-3. **BCrypt verify** (line 100): `passwordEncoder.matches()` against stored hash.
-4. **Restore on success** (lines 102-105): The decremented counter is incremented back on correct passcode.
-5. **Report remaining** (lines 107-111): On failure, the remaining count from the decremented document is returned.
+2. **Attempts exhausted** (lines 92-98): If no document is found (counter at zero), the SHL is deactivated.
+3. **BCrypt verify** (line 101): `passwordEncoder.matches()` against stored hash.
+4. **Restore on success** (lines 103-106): The decremented counter is incremented back on correct passcode.
+5. **Report remaining** (lines 108-112): On failure, the remaining count from the decremented document is returned.
 
 The `GlobalExceptionHandler` returns HTTP 401 with `{"error":"Invalid passcode","remainingAttempts":N}` (lines 40-48).
 
@@ -317,7 +317,7 @@ The implementation exceeds specification requirements in several areas:
 | **Comprehensive Audit Logging** | Every access, passcode attempt, and file download is logged with IP address, user-agent, action type, recipient, and success/failure status. | `AccessLogService` used throughout `ManifestService.java` |
 | **QR Code Generation** | Automatic QR code generation with Error Correction Level M (spec-required), configurable dimensions, returned as base64 data URI. | `QrCodeService.java:26` (`ErrorCorrectionLevel.M`), `AppProperties.java:18` |
 | **AWS HealthLake Integration** | Fetches FHIR bundles by clinical category (Allergies, Conditions, Medications, etc.) from AWS HealthLake. | `HealthLakeService`, `ShlService.java:82-86` |
-| **Zero-Knowledge Architecture** | Encryption key exists only in URL fragment (never sent to server). Server stores only encrypted JWE payloads. | `ShlPayloadService.java:35` (fragment-based key delivery) |
+| **Zero-Knowledge Architecture** | Encryption key exists only in URL fragment (never sent to server). Server stores only encrypted JWE payloads. | `ShlPayloadService.java:42` (fragment-based key delivery) |
 | **Atomic MongoDB Operations** | Passcode decrement, download token consumption, and attempt restoration all use `findAndModify` for race safety. | `ManifestService.java:86-90,184-188` |
 | **File Upload Support** | Supports arbitrary file types (not just FHIR JSON), preserving original content type and filename. | `ShlService.java:101-150` |
 | **Management API** | Full lifecycle management: create, list (with pagination), detail retrieval, deactivation, and access log queries. | `ShlManagementController` |
