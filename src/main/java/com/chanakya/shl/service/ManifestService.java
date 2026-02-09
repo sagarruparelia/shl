@@ -16,6 +16,7 @@ import com.chanakya.shl.repository.ShlRepository;
 import com.chanakya.shl.util.SecureRandomUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -88,7 +89,8 @@ public class ManifestService {
                 .and("passcodeFailuresRemaining").gt(0));
         Update update = new Update().inc("passcodeFailuresRemaining", -1);
 
-        return mongoTemplate.findAndModify(query, update, ShlDocument.class)
+        return mongoTemplate.findAndModify(query, update,
+                        FindAndModifyOptions.options().returnNew(true), ShlDocument.class)
                 .switchIfEmpty(Mono.defer(() -> {
                     // No document found means either doesn't exist or attempts exhausted
                     shl.setActive(false);

@@ -87,7 +87,7 @@ public class ShlManagementController {
                             return shlService.createFromFile(
                                     fileBytes, contentType, filePart.filename(),
                                     options.label, options.passcode, options.expirationInSeconds,
-                                    options.singleUse, options.longTerm,
+                                    options.singleUse, options.directAccess, options.longTerm,
                                     options.patientId, options.categories);
                         })
         ).map(response -> ResponseEntity.status(201).body(response));
@@ -144,6 +144,7 @@ public class ShlManagementController {
         public String passcode;
         public Long expirationInSeconds;
         public boolean singleUse;
+        public boolean directAccess;
         public boolean longTerm;
         public String patientId;
         public List<FhirCategory> categories;

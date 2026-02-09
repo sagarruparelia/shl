@@ -3,13 +3,13 @@ package com.chanakya.shl.model.enums;
 public enum ShlFlag {
     L,  // Long-term link
     P,  // Passcode protected
-    U;  // Single-use (direct file access)
+    U;  // Direct file access (bypasses manifest)
 
-    public static String toFlagString(boolean longTerm, boolean passcode, boolean singleUse) {
+    public static String toFlagString(boolean longTerm, boolean passcode, boolean directAccess) {
         StringBuilder sb = new StringBuilder();
         if (longTerm) sb.append("L");
         if (passcode) sb.append("P");
-        if (singleUse) sb.append("U");
+        if (directAccess) sb.append("U");
         return sb.toString();
     }
 }

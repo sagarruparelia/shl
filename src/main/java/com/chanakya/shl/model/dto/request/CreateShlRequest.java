@@ -33,5 +33,8 @@ public class CreateShlRequest {
     private boolean singleUse = false;
 
     @Builder.Default
+    private boolean directAccess = false;
+
+    @Builder.Default
     private boolean longTerm = false;
 }

@@ -51,7 +51,7 @@ public class ShlService {
             String encryptionKey = SecureRandomUtil.generateBase64UrlRandom(32);
             String manifestId = SecureRandomUtil.generateBase64UrlRandom(32);
             String flags = ShlFlag.toFlagString(request.isLongTerm(),
-                    request.getPasscode() != null, request.isSingleUse());
+                    request.getPasscode() != null, request.isDirectAccess());
 
             ShlDocument shl = ShlDocument.builder()
                     .manifestId(manifestId)
@@ -101,19 +101,20 @@ public class ShlService {
     public Mono<CreateShlResponse> createFromFile(byte[] fileBytes, String contentType,
                                                     String originalFileName, String label,
                                                     String passcode, Long expirationInSeconds,
-                                                    boolean singleUse, boolean longTerm,
+                                                    boolean singleUse, boolean directAccess,
+                                                    boolean longTerm,
                                                     String patientId, List<FhirCategory> categories) {
         return Mono.defer(() -> {
-            if (singleUse && longTerm) {
-                return Mono.error(new IllegalArgumentException("Cannot combine single-use (U) with long-term (L) flag"));
+            if (directAccess && longTerm) {
+                return Mono.error(new IllegalArgumentException("Cannot combine direct access (U) with long-term (L) flag"));
             }
-            if (singleUse && passcode != null) {
-                return Mono.error(new IllegalArgumentException("Cannot combine single-use (U) with passcode (P) flag"));
+            if (directAccess && passcode != null) {
+                return Mono.error(new IllegalArgumentException("Cannot combine direct access (U) with passcode (P) flag"));
             }
 
             String encryptionKey = SecureRandomUtil.generateBase64UrlRandom(32);
             String manifestId = SecureRandomUtil.generateBase64UrlRandom(32);
-            String flags = ShlFlag.toFlagString(longTerm, passcode != null, singleUse);
+            String flags = ShlFlag.toFlagString(longTerm, passcode != null, directAccess);
 
             ShlDocument shl = ShlDocument.builder()
                     .manifestId(manifestId)
@@ -239,11 +240,11 @@ public class ShlService {
     }
 
     private void validateFlags(CreateShlRequest request) {
-        if (request.isSingleUse() && request.isLongTerm()) {
-            throw new IllegalArgumentException("Cannot combine single-use (U) with long-term (L) flag");
+        if (request.isDirectAccess() && request.isLongTerm()) {
+            throw new IllegalArgumentException("Cannot combine direct access (U) with long-term (L) flag");
         }
-        if (request.isSingleUse() && request.getPasscode() != null) {
-            throw new IllegalArgumentException("Cannot combine single-use (U) with passcode (P) flag");
+        if (request.isDirectAccess() && request.getPasscode() != null) {
+            throw new IllegalArgumentException("Cannot combine direct access (U) with passcode (P) flag");
         }
     }
 
