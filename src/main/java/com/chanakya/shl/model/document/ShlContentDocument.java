@@ -30,6 +30,8 @@ public class ShlContentDocument {
 
     private String originalFileName;
 
+    private String originalContentType;
+
     private long contentLength;
 
     @CreatedDate

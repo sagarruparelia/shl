@@ -12,6 +12,7 @@ import com.chanakya.shl.model.enums.FhirCategory;
 import com.chanakya.shl.model.enums.ShlFlag;
 import com.chanakya.shl.repository.ShlContentRepository;
 import com.chanakya.shl.repository.ShlRepository;
+import com.chanakya.shl.util.FhirDocumentReferenceUtil;
 import com.chanakya.shl.util.SecureRandomUtil;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -81,7 +82,7 @@ public class ShlService {
         if (categories != null && !categories.isEmpty()) {
             healthLakeMono = healthLakeService.fetchBundles(request.getPatientId(), categories)
                     .concatMap(bundleJson -> encryptAndStore(shl, bundleJson,
-                            "application/fhir+json;fhirVersion=4.0.1", null))
+                            "application/fhir+json;fhirVersion=4.0.1", null, null, 0))
                     .then(Mono.just(shl));
         }
 
@@ -89,7 +90,7 @@ public class ShlService {
             if (request.getContent() != null) {
                 try {
                     String contentJson = objectMapper.writeValueAsString(request.getContent());
-                    return encryptAndStore(s, contentJson, "application/fhir+json;fhirVersion=4.0.1", null);
+                    return encryptAndStore(s, contentJson, "application/fhir+json;fhirVersion=4.0.1", null, null, 0);
                 } catch (Exception e) {
                     return Mono.error(new RuntimeException("Failed to serialize content", e));
                 }
@@ -137,13 +138,28 @@ public class ShlService {
                         if (categories != null && !categories.isEmpty() && patientId != null) {
                             healthLakeMono = healthLakeService.fetchBundles(patientId, categories)
                                     .concatMap(bundleJson -> encryptAndStore(savedShl, bundleJson,
-                                            "application/fhir+json;fhirVersion=4.0.1", null))
+                                            "application/fhir+json;fhirVersion=4.0.1", null, null, 0))
                                     .then(Mono.just(savedShl));
                         }
                         // Then store the uploaded file
                         return healthLakeMono.flatMap(s -> {
-                            String fileContent = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8);
-                            return encryptAndStore(s, fileContent, contentType, originalFileName);
+                            String manifestContentType;
+                            String fileContent;
+                            String origType = null;
+                            int origLength = 0;
+
+                            if (FhirDocumentReferenceUtil.isShlCompliantContentType(contentType)) {
+                                fileContent = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8);
+                                manifestContentType = contentType;
+                            } else {
+                                fileContent = FhirDocumentReferenceUtil.wrapInDocumentReference(
+                                        fileBytes, contentType, originalFileName);
+                                manifestContentType = "application/fhir+json;fhirVersion=4.0.1";
+                                origType = contentType;
+                                origLength = fileBytes.length;
+                            }
+                            return encryptAndStore(s, fileContent, manifestContentType,
+                                    originalFileName, origType, origLength);
                         });
                     })
                     .flatMap(this::toCreateResponse);
@@ -151,14 +167,17 @@ public class ShlService {
     }
 
     private Mono<ShlDocument> encryptAndStore(ShlDocument shl, String content,
-                                               String contentType, String originalFileName) {
+                                               String contentType, String originalFileName,
+                                               String originalContentType, int originalContentLength) {
         return encryptionService.encrypt(content, shl.getEncryptionKey(), contentType)
                 .flatMap(jweString -> {
                     ShlContentDocument contentDoc = ShlContentDocument.builder()
                             .shlId(shl.getId())
                             .contentType(contentType)
                             .originalFileName(originalFileName)
-                            .contentLength(content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                            .originalContentType(originalContentType)
+                            .contentLength(originalContentLength > 0 ? originalContentLength :
+                                    content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
                             .build();
 
                     return shlContentRepository.save(contentDoc)
@@ -199,7 +218,8 @@ public class ShlService {
                             shlContentRepository.findByShlId(id)
                                     .map(c -> ShlDetailResponse.ContentSummary.builder()
                                             .id(c.getId())
-                                            .contentType(c.getContentType())
+                                            .contentType(c.getOriginalContentType() != null ?
+                                                    c.getOriginalContentType() : c.getContentType())
                                             .originalFileName(c.getOriginalFileName())
                                             .contentLength(c.getContentLength())
                                             .createdAt(c.getCreatedAt() != null ? c.getCreatedAt().toString() : null)
